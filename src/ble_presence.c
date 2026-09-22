@@ -205,20 +205,23 @@ esp_err_t bc250_ble_start_learning(uint32_t duration_ms)
 
 char *bc250_ble_scan_results_json(void)
 {
-    cJSON *array = cJSON_CreateArray();
+    learn_result_t snapshot[LEARN_RESULT_COUNT];
     portENTER_CRITICAL(&s_lock);
+    memcpy(snapshot, s_results, sizeof(snapshot));
+    portEXIT_CRITICAL(&s_lock);
+
+    cJSON *array = cJSON_CreateArray();
     for (int i = 0; i < LEARN_RESULT_COUNT; ++i) {
-        if (!s_results[i].used) continue;
+        if (!snapshot[i].used) continue;
         char address[18];
-        bc250_ble_format_address(s_results[i].address, address);
+        bc250_ble_format_address(snapshot[i].address, address);
         cJSON *item = cJSON_CreateObject();
         cJSON_AddStringToObject(item, "address", address);
-        cJSON_AddNumberToObject(item, "address_type", s_results[i].address_type);
-        cJSON_AddNumberToObject(item, "rssi", s_results[i].rssi);
-        cJSON_AddStringToObject(item, "name", s_results[i].name);
+        cJSON_AddNumberToObject(item, "address_type", snapshot[i].address_type);
+        cJSON_AddNumberToObject(item, "rssi", snapshot[i].rssi);
+        cJSON_AddStringToObject(item, "name", snapshot[i].name);
         cJSON_AddItemToArray(array, item);
     }
-    portEXIT_CRITICAL(&s_lock);
     char *json = cJSON_PrintUnformatted(array);
     cJSON_Delete(array);
     return json;
@@ -228,4 +231,3 @@ bool bc250_ble_device_present(unsigned index)
 {
     return index < BC250_MAX_BLE_DEVICES && s_present[index];
 }
-

@@ -99,6 +99,8 @@ typedef struct {
     uint8_t ble_device_count;
     bc250_ble_device_config_t ble_devices[BC250_MAX_BLE_DEVICES];
     uint8_t zigbee_channel;
+    char zigbee_manufacturer[33];
+    char zigbee_model[33];
 } bc250_config_t;
 
 esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending);
@@ -120,4 +122,3 @@ const char *bc250_button_action_name(bc250_button_action_t action);
 #ifdef __cplusplus
 }
 #endif
-

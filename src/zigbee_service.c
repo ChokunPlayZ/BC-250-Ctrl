@@ -1,5 +1,7 @@
 #include "zigbee_service.h"
 
+#include <string.h>
+
 #include "app_events.h"
 #include "esp_log.h"
 #include "esp_zigbee.h"
@@ -12,12 +14,19 @@
 #define BC250_ZIGBEE_ALL_CHANNELS 0x07FFF800UL
 
 static const char *TAG = "zigbee";
-static const char MANUFACTURER[] = "\x05" "BC250";
-static const char MODEL[] = "\x10" "BC250 Controller";
 static bc250_config_t s_config;
+static uint8_t s_manufacturer[34];
+static uint8_t s_model[34];
 static volatile bool s_started;
 static volatile bool s_joined;
 static bool s_internal_attribute_update;
+
+static void make_zcl_string(const char *source, uint8_t output[34])
+{
+    size_t length = strnlen(source, 32);
+    output[0] = (uint8_t)length;
+    memcpy(&output[1], source, length);
+}
 
 static void commission_cb(void *arg)
 {
@@ -75,15 +84,17 @@ static void zcl_handler(ezb_zcl_core_action_callback_id_t callback_id, void *mes
 
 static esp_err_t create_device(void)
 {
+    make_zcl_string(s_config.zigbee_manufacturer, s_manufacturer);
+    make_zcl_string(s_config.zigbee_model, s_model);
     ezb_af_device_desc_t device = ezb_af_create_device_desc();
     ezb_zha_on_off_light_config_t light = EZB_ZHA_ON_OFF_LIGHT_CONFIG();
     ezb_af_ep_desc_t endpoint = ezb_zha_create_on_off_light(BC250_ZIGBEE_ENDPOINT, &light);
     ezb_zcl_cluster_desc_t basic = ezb_af_endpoint_get_cluster_desc(
         endpoint, EZB_ZCL_CLUSTER_ID_BASIC, EZB_ZCL_CLUSTER_SERVER);
     ezb_zcl_basic_cluster_desc_add_attr(basic, EZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID,
-                                        (void *)MANUFACTURER);
+                                        s_manufacturer);
     ezb_zcl_basic_cluster_desc_add_attr(basic, EZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID,
-                                        (void *)MODEL);
+                                        s_model);
     ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(device, endpoint));
     ESP_ERROR_CHECK(ezb_af_device_desc_register(device));
     ezb_zcl_core_action_handler_register(zcl_handler);

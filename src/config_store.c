@@ -117,6 +117,8 @@ void bc250_config_defaults(bc250_config_t *config)
     config->ble_scan_window_ms = 100;
     config->ble_absent_ms = 30000;
     config->zigbee_channel = 0;
+    strlcpy(config->zigbee_manufacturer, "BC250", sizeof(config->zigbee_manufacturer));
+    strlcpy(config->zigbee_model, "BC250 Controller", sizeof(config->zigbee_model));
     for (size_t i = 0; i < BC250_MAX_BUTTONS; ++i) {
         config->buttons[i].input.gpio = BC250_GPIO_DISABLED;
         config->buttons[i].input.active_high = false;
@@ -240,6 +242,16 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         snprintf(error, error_size, "BLE scan window must be nonzero and not exceed the interval");
         return ESP_ERR_INVALID_ARG;
     }
+    if (config->zigbee_channel != 0 &&
+        (config->zigbee_channel < 11 || config->zigbee_channel > 26)) {
+        snprintf(error, error_size, "Zigbee channel must be automatic (0) or 11-26");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (config->sense_on_ms == 0 || config->sense_off_ms == 0 ||
+        config->ble_absent_ms < config->ble_scan_interval_ms) {
+        snprintf(error, error_size, "invalid sense or BLE presence timing");
+        return ESP_ERR_INVALID_ARG;
+    }
     const struct { int gpio; const char *name; } fixed[] = {
         {config->ps_on.gpio, "PS_ON"},
         {config->power_button.gpio, "power button"},
@@ -265,6 +277,19 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
                             TAG, "button pin validation");
         if (button->input.gpio < 0 || pin_in_use(config, button->input.gpio, i)) {
             snprintf(error, error_size, "button %d uses a disabled or duplicate GPIO", i);
+            return ESP_ERR_INVALID_ARG;
+        }
+        if (button->input.debounce_ms == 0 || button->double_press_ms == 0 ||
+            button->long_press_ms <= button->input.debounce_ms) {
+            snprintf(error, error_size, "button %d has invalid gesture timing", i);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    for (int i = 0; i < config->ble_device_count; ++i) {
+        const bc250_ble_device_config_t *device = &config->ble_devices[i];
+        if (!device->enabled) continue;
+        if (device->type > BC250_BLE_MATCH_MANUFACTURER_DATA || device->value[0] == '\0') {
+            snprintf(error, error_size, "BLE matcher %d is incomplete", i);
             return ESP_ERR_INVALID_ARG;
         }
     }
@@ -358,12 +383,23 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddStringToObject(root, "wifi_ssid", config->wifi_ssid);
     cJSON_AddStringToObject(root, "wifi_password", include_secrets ? config->wifi_password : "");
     cJSON_AddBoolToObject(root, "advanced_gpio_override", config->advanced_gpio_override);
+    cJSON_AddNumberToObject(root, "sense_on_ms", config->sense_on_ms);
+    cJSON_AddNumberToObject(root, "sense_off_ms", config->sense_off_ms);
+    cJSON_AddNumberToObject(root, "ble_scan_interval_ms", config->ble_scan_interval_ms);
+    cJSON_AddNumberToObject(root, "ble_scan_window_ms", config->ble_scan_window_ms);
+    cJSON_AddNumberToObject(root, "ble_absent_ms", config->ble_absent_ms);
+    cJSON_AddNumberToObject(root, "zigbee_channel", config->zigbee_channel);
+    cJSON_AddStringToObject(root, "zigbee_manufacturer", config->zigbee_manufacturer);
+    cJSON_AddStringToObject(root, "zigbee_model", config->zigbee_model);
 
     cJSON *pins = cJSON_AddObjectToObject(root, "pins");
     cJSON_AddItemToObject(pins, "ps_on", pin_to_json(config->ps_on.gpio, config->ps_on.active_high));
     cJSON_AddItemToObject(pins, "power_button", pin_to_json(config->power_button.gpio, config->power_button.active_high));
     cJSON_AddItemToObject(pins, "power_sense", pin_to_json(config->power_sense.gpio, config->power_sense.active_high));
     cJSON_AddItemToObject(pins, "status_led", pin_to_json(config->status_led.gpio, config->status_led.active_high));
+    cJSON *sense = cJSON_GetObjectItemCaseSensitive(pins, "power_sense");
+    cJSON_AddBoolToObject(sense, "pull_up", config->power_sense.pull_up);
+    cJSON_AddNumberToObject(sense, "debounce_ms", config->power_sense.debounce_ms);
 
     cJSON *timing = cJSON_AddObjectToObject(root, "timing");
     cJSON_AddNumberToObject(timing, "strategy", config->timing.strategy);
@@ -373,6 +409,7 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddNumberToObject(timing, "start_timeout_ms", config->timing.start_timeout_ms);
     cJSON_AddNumberToObject(timing, "shutdown_timeout_ms", config->timing.shutdown_timeout_ms);
     cJSON_AddNumberToObject(timing, "force_off_ms", config->timing.force_off_ms);
+    cJSON_AddNumberToObject(timing, "retry_cooldown_ms", config->timing.retry_cooldown_ms);
 
     cJSON *buttons = cJSON_AddArrayToObject(root, "buttons");
     for (int i = 0; i < config->button_count; ++i) {
@@ -381,6 +418,10 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
         cJSON_AddBoolToObject(item, "enabled", button->enabled);
         cJSON_AddNumberToObject(item, "gpio", button->input.gpio);
         cJSON_AddBoolToObject(item, "active_high", button->input.active_high);
+        cJSON_AddBoolToObject(item, "pull_up", button->input.pull_up);
+        cJSON_AddNumberToObject(item, "debounce_ms", button->input.debounce_ms);
+        cJSON_AddNumberToObject(item, "double_press_ms", button->double_press_ms);
+        cJSON_AddNumberToObject(item, "long_press_ms", button->long_press_ms);
         cJSON_AddStringToObject(item, "short_action", bc250_button_action_name(button->short_action));
         cJSON_AddStringToObject(item, "double_action", bc250_button_action_name(button->double_action));
         cJSON_AddStringToObject(item, "long_action", bc250_button_action_name(button->long_action));
@@ -455,6 +496,22 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     if (cJSON_IsString(item) && strlen(item->valuestring) >= 8) {
         bc250_config_set_admin_password(config, item->valuestring);
     }
+#define PATCH_ROOT_U32(field) do { cJSON *v = cJSON_GetObjectItemCaseSensitive(root, #field); \
+    if (cJSON_IsNumber(v) && v->valuedouble >= 0) config->field = (uint32_t)v->valuedouble; } while (0)
+    PATCH_ROOT_U32(sense_on_ms);
+    PATCH_ROOT_U32(sense_off_ms);
+    PATCH_ROOT_U32(ble_scan_interval_ms);
+    PATCH_ROOT_U32(ble_scan_window_ms);
+    PATCH_ROOT_U32(ble_absent_ms);
+#undef PATCH_ROOT_U32
+    item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_channel");
+    if (cJSON_IsNumber(item)) config->zigbee_channel = item->valueint;
+    item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_manufacturer");
+    if (cJSON_IsString(item)) strlcpy(config->zigbee_manufacturer, item->valuestring,
+                                      sizeof(config->zigbee_manufacturer));
+    item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_model");
+    if (cJSON_IsString(item)) strlcpy(config->zigbee_model, item->valuestring,
+                                      sizeof(config->zigbee_model));
 
     cJSON *pins = cJSON_GetObjectItemCaseSensitive(root, "pins");
     if (cJSON_IsObject(pins)) {
@@ -466,6 +523,11 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
         patch_pin(pins, "power_sense", &sense);
         config->power_sense.gpio = sense.gpio;
         config->power_sense.active_high = sense.active_high;
+        cJSON *sense_json = cJSON_GetObjectItemCaseSensitive(pins, "power_sense");
+        cJSON *v = cJSON_GetObjectItemCaseSensitive(sense_json, "pull_up");
+        if (cJSON_IsBool(v)) config->power_sense.pull_up = cJSON_IsTrue(v);
+        v = cJSON_GetObjectItemCaseSensitive(sense_json, "debounce_ms");
+        if (cJSON_IsNumber(v) && v->valuedouble >= 0) config->power_sense.debounce_ms = v->valueint;
     }
 
     cJSON *timing = cJSON_GetObjectItemCaseSensitive(root, "timing");
@@ -480,6 +542,7 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
         PATCH_U32(start_timeout_ms);
         PATCH_U32(shutdown_timeout_ms);
         PATCH_U32(force_off_ms);
+        PATCH_U32(retry_cooldown_ms);
     }
 #undef PATCH_U32
 
@@ -497,6 +560,14 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
             if (cJSON_IsNumber(v)) dst->input.gpio = v->valueint;
             v = cJSON_GetObjectItemCaseSensitive(src, "active_high");
             if (cJSON_IsBool(v)) dst->input.active_high = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItemCaseSensitive(src, "pull_up");
+            if (cJSON_IsBool(v)) dst->input.pull_up = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItemCaseSensitive(src, "debounce_ms");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0) dst->input.debounce_ms = v->valueint;
+            v = cJSON_GetObjectItemCaseSensitive(src, "double_press_ms");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0) dst->double_press_ms = v->valueint;
+            v = cJSON_GetObjectItemCaseSensitive(src, "long_press_ms");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0) dst->long_press_ms = v->valueint;
             v = cJSON_GetObjectItemCaseSensitive(src, "short_action");
             if (cJSON_IsString(v)) dst->short_action = parse_action(v->valuestring);
             v = cJSON_GetObjectItemCaseSensitive(src, "double_action");
