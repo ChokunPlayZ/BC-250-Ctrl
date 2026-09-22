@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_events.h"
+#include "core/button_logic.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -10,19 +11,9 @@
 #include "freertos/task.h"
 #include "gpio_service.h"
 
-typedef struct {
-    bool raw;
-    bool stable;
-    bool long_sent;
-    uint8_t clicks;
-    uint64_t raw_changed_ms;
-    uint64_t pressed_ms;
-    uint64_t released_ms;
-} button_runtime_t;
-
 static const char *TAG = "buttons";
 static bc250_config_t s_config;
-static button_runtime_t s_runtime[BC250_MAX_BUTTONS];
+static bc250_button_logic_t s_runtime[BC250_MAX_BUTTONS];
 
 static uint64_t now_ms(void)
 {
@@ -42,31 +33,13 @@ static void emit_action(bc250_button_action_t action)
 static void process_button(int index, uint64_t now)
 {
     const bc250_button_config_t *cfg = &s_config.buttons[index];
-    button_runtime_t *rt = &s_runtime[index];
+    bc250_button_logic_t *rt = &s_runtime[index];
     bool raw = bc250_gpio_read(&cfg->input);
-    if (raw != rt->raw) {
-        rt->raw = raw;
-        rt->raw_changed_ms = now;
-    }
-    if (rt->stable != raw && now - rt->raw_changed_ms >= cfg->input.debounce_ms) {
-        rt->stable = raw;
-        if (raw) {
-            rt->pressed_ms = now;
-            rt->long_sent = false;
-        } else if (!rt->long_sent) {
-            rt->clicks++;
-            rt->released_ms = now;
-        }
-    }
-    if (rt->stable && !rt->long_sent && now - rt->pressed_ms >= cfg->long_press_ms) {
-        rt->long_sent = true;
-        rt->clicks = 0;
-        emit_action(cfg->long_action);
-    }
-    if (!rt->stable && rt->clicks > 0 && now - rt->released_ms >= cfg->double_press_ms) {
-        emit_action(rt->clicks >= 2 ? cfg->double_action : cfg->short_action);
-        rt->clicks = 0;
-    }
+    bc250_button_gesture_t gesture = bc250_button_logic_update(
+        rt, raw, now, cfg->input.debounce_ms, cfg->double_press_ms, cfg->long_press_ms);
+    if (gesture == BC250_GESTURE_SHORT) emit_action(cfg->short_action);
+    else if (gesture == BC250_GESTURE_DOUBLE) emit_action(cfg->double_action);
+    else if (gesture == BC250_GESTURE_LONG) emit_action(cfg->long_action);
 }
 
 static void button_task(void *arg)
@@ -89,8 +62,7 @@ esp_err_t bc250_button_service_start(const bc250_config_t *config)
     for (int i = 0; i < s_config.button_count; ++i) {
         if (!s_config.buttons[i].enabled) continue;
         ESP_RETURN_ON_ERROR(bc250_gpio_init_input(&s_config.buttons[i].input), TAG, "button %d", i);
-        s_runtime[i].raw = bc250_gpio_read(&s_config.buttons[i].input);
-        s_runtime[i].stable = s_runtime[i].raw;
+        bc250_button_logic_init(&s_runtime[i], bc250_gpio_read(&s_config.buttons[i].input), now_ms());
     }
     return xTaskCreate(button_task, "buttons", 3072, NULL, 5, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }

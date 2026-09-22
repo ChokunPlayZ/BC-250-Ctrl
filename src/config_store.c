@@ -8,9 +8,9 @@
 #include "esp_crc.h"
 #include "esp_log.h"
 #include "esp_random.h"
-#include "mbedtls/sha256.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "psa/crypto.h"
 
 static const char *TAG = "config";
 static const char *NVS_NAMESPACE = "bc250";
@@ -70,13 +70,19 @@ static void random_password(char output[17])
 
 static void hash_password(const uint8_t salt[16], const char *password, uint8_t output[32])
 {
-    mbedtls_sha256_context ctx;
-    mbedtls_sha256_init(&ctx);
-    mbedtls_sha256_starts(&ctx, 0);
-    mbedtls_sha256_update(&ctx, salt, 16);
-    mbedtls_sha256_update(&ctx, (const unsigned char *)password, strlen(password));
-    mbedtls_sha256_finish(&ctx, output);
-    mbedtls_sha256_free(&ctx);
+    psa_hash_operation_t operation = PSA_HASH_OPERATION_INIT;
+    size_t output_length = 0;
+    psa_status_t status = psa_crypto_init();
+    if (status == PSA_SUCCESS) status = psa_hash_setup(&operation, PSA_ALG_SHA_256);
+    if (status == PSA_SUCCESS) status = psa_hash_update(&operation, salt, 16);
+    if (status == PSA_SUCCESS) {
+        status = psa_hash_update(&operation, (const uint8_t *)password, strlen(password));
+    }
+    if (status == PSA_SUCCESS) {
+        status = psa_hash_finish(&operation, output, 32, &output_length);
+    }
+    if (status != PSA_SUCCESS || output_length != 32) memset(output, 0, 32);
+    psa_hash_abort(&operation);
 }
 
 void bc250_config_set_admin_password(bc250_config_t *config, const char *password)

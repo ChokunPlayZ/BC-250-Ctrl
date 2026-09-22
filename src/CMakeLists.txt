@@ -13,7 +13,9 @@ idf_component_register(
         "wifi_service.c"
         "zigbee_service.c"
         "core/ble_match.c"
+        "core/button_logic.c"
         "core/power_logic.c"
+        "core/presence_logic.c"
     INCLUDE_DIRS
         "."
         "core"
@@ -25,10 +27,9 @@ idf_component_register(
         esp_netif
         esp_timer
         esp_wifi
-        json
+        espressif__cjson
         lwip
         mbedtls
         nvs_flash
         esp-zigbee-lib
 )
-

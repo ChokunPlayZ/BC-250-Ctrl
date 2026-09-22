@@ -6,6 +6,7 @@
 #include "app_events.h"
 #include "cJSON.h"
 #include "core/ble_match.h"
+#include "core/presence_logic.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -28,8 +29,7 @@ typedef struct {
 
 static const char *TAG = "ble_presence";
 static bc250_config_t s_config;
-static bool s_present[BC250_MAX_BLE_DEVICES];
-static uint64_t s_last_seen[BC250_MAX_BLE_DEVICES];
+static bc250_presence_logic_t s_presence[BC250_MAX_BLE_DEVICES];
 static learn_result_t s_results[LEARN_RESULT_COUNT];
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint64_t s_learning_until_ms;
@@ -90,9 +90,7 @@ static void process_advertisement(const struct ble_gap_disc_desc *disc)
                                            matcher->min_rssi, &advertisement)) {
             continue;
         }
-        bool arrived = !s_present[i];
-        s_present[i] = true;
-        s_last_seen[i] = now_ms();
+        bool arrived = bc250_presence_logic_seen(&s_presence[i], now_ms());
         if (arrived) {
             ESP_LOGI(TAG, "BLE device arrived: %s", matcher->label);
             bc250_app_event_t event = {
@@ -168,8 +166,7 @@ static void presence_task(void *arg)
             was_learning = learning;
         }
         for (int i = 0; i < s_config.ble_device_count; ++i) {
-            if (s_present[i] && now - s_last_seen[i] >= s_config.ble_absent_ms) {
-                s_present[i] = false;
+            if (bc250_presence_logic_expire(&s_presence[i], now, s_config.ble_absent_ms)) {
                 ESP_LOGI(TAG, "BLE device absent: %s", s_config.ble_devices[i].label);
             }
         }
@@ -181,8 +178,7 @@ esp_err_t bc250_ble_presence_start(const bc250_config_t *config)
 {
     if (config == NULL) return ESP_ERR_INVALID_ARG;
     s_config = *config;
-    memset(s_present, 0, sizeof(s_present));
-    memset(s_last_seen, 0, sizeof(s_last_seen));
+    memset(s_presence, 0, sizeof(s_presence));
     memset(s_results, 0, sizeof(s_results));
     esp_err_t err = nimble_port_init();
     if (err != ESP_OK) return err;
@@ -229,5 +225,5 @@ char *bc250_ble_scan_results_json(void)
 
 bool bc250_ble_device_present(unsigned index)
 {
-    return index < BC250_MAX_BLE_DEVICES && s_present[index];
+    return index < BC250_MAX_BLE_DEVICES && s_presence[index].present;
 }

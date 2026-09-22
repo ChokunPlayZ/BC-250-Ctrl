@@ -4,6 +4,8 @@
 
 #include "../../../src/core/power_logic.h"
 #include "../../../src/core/ble_match.h"
+#include "../../../src/core/button_logic.h"
+#include "../../../src/core/presence_logic.h"
 
 static void test_start_sequence(void)
 {
@@ -37,6 +39,28 @@ static void test_start_timeout(void)
     assert(!bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 15002));
 }
 
+static void test_start_strategies_and_idempotence(void)
+{
+    bc250_power_logic_t p;
+    bc250_power_timing_t timing = bc250_power_default_timing();
+
+    timing.strategy = BC250_START_PS_ON_ONLY;
+    bc250_power_logic_init(&p, &timing, false, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+    assert(p.outputs.ps_on && !p.outputs.power_button);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 2));
+
+    timing.strategy = BC250_START_BUTTON_ONLY;
+    bc250_power_logic_init(&p, &timing, false, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+    assert(!p.outputs.ps_on && p.outputs.power_button);
+
+    timing.strategy = BC250_START_SIMULTANEOUS;
+    bc250_power_logic_init(&p, &timing, false, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+    assert(p.outputs.ps_on && p.outputs.power_button);
+}
+
 static void test_graceful_and_force_off(void)
 {
     bc250_power_logic_t p;
@@ -55,6 +79,59 @@ static void test_graceful_and_force_off(void)
     assert(p.outputs.power_button);
     bc250_power_tick(&p, true, 7001);
     assert(!p.outputs.power_button);
+}
+
+static void test_shutdown_timeout(void)
+{
+    bc250_power_logic_t p;
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    timing.shutdown_timeout_ms = 1000;
+    bc250_power_logic_init(&p, &timing, true, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, true, 1));
+    bc250_power_tick(&p, true, 1001);
+    assert(p.state == BC250_POWER_FAULT);
+    assert(!p.outputs.ps_on && !p.outputs.power_button);
+}
+
+static void test_button_gestures(void)
+{
+    bc250_button_logic_t button;
+    bc250_button_logic_init(&button, false, 0);
+    assert(bc250_button_logic_update(&button, true, 10, 20, 100, 500) == BC250_GESTURE_NONE);
+    assert(bc250_button_logic_update(&button, true, 30, 20, 100, 500) == BC250_GESTURE_NONE);
+    assert(bc250_button_logic_update(&button, false, 40, 20, 100, 500) == BC250_GESTURE_NONE);
+    assert(bc250_button_logic_update(&button, false, 60, 20, 100, 500) == BC250_GESTURE_NONE);
+    assert(bc250_button_logic_update(&button, false, 160, 20, 100, 500) == BC250_GESTURE_SHORT);
+
+    bc250_button_logic_init(&button, false, 0);
+    bc250_button_logic_update(&button, true, 10, 20, 100, 500);
+    bc250_button_logic_update(&button, true, 30, 20, 100, 500);
+    bc250_button_logic_update(&button, false, 40, 20, 100, 500);
+    bc250_button_logic_update(&button, false, 60, 20, 100, 500);
+    bc250_button_logic_update(&button, true, 80, 20, 100, 500);
+    bc250_button_logic_update(&button, true, 100, 20, 100, 500);
+    bc250_button_logic_update(&button, false, 110, 20, 100, 500);
+    bc250_button_logic_update(&button, false, 130, 20, 100, 500);
+    assert(bc250_button_logic_update(&button, false, 230, 20, 100, 500) == BC250_GESTURE_DOUBLE);
+
+    bc250_button_logic_init(&button, false, 0);
+    bc250_button_logic_update(&button, true, 10, 20, 100, 500);
+    bc250_button_logic_update(&button, true, 30, 20, 100, 500);
+    assert(bc250_button_logic_update(&button, true, 530, 20, 100, 500) == BC250_GESTURE_LONG);
+    assert(bc250_button_logic_update(&button, false, 550, 20, 100, 500) == BC250_GESTURE_NONE);
+    assert(bc250_button_logic_update(&button, false, 700, 20, 100, 500) == BC250_GESTURE_NONE);
+}
+
+static void test_presence_deduplication(void)
+{
+    bc250_presence_logic_t presence;
+    bc250_presence_logic_init(&presence);
+    assert(bc250_presence_logic_seen(&presence, 100));
+    assert(!bc250_presence_logic_seen(&presence, 200));
+    assert(!bc250_presence_logic_expire(&presence, 30199, 30000));
+    assert(bc250_presence_logic_expire(&presence, 30200, 30000));
+    assert(!bc250_presence_logic_expire(&presence, 40000, 30000));
+    assert(bc250_presence_logic_seen(&presence, 40001));
 }
 
 static void test_ble_matchers(void)
@@ -83,7 +160,11 @@ int main(void)
 {
     test_start_sequence();
     test_start_timeout();
+    test_start_strategies_and_idempotence();
     test_graceful_and_force_off();
+    test_shutdown_timeout();
+    test_button_gestures();
+    test_presence_deduplication();
     test_ble_matchers();
     puts("core tests passed");
     return 0;
