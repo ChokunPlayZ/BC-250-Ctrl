@@ -1,0 +1,34 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "app_events.c"
+        "ble_presence.c"
+        "button_service.c"
+        "config_store.c"
+        "gpio_service.c"
+        "ota_service.c"
+        "power_service.c"
+        "status_led.c"
+        "web_server.c"
+        "wifi_service.c"
+        "zigbee_service.c"
+        "core/ble_match.c"
+        "core/power_logic.c"
+    INCLUDE_DIRS
+        "."
+        "core"
+    REQUIRES
+        app_update
+        bt
+        esp_event
+        esp_http_server
+        esp_netif
+        esp_timer
+        esp_wifi
+        json
+        lwip
+        mbedtls
+        nvs_flash
+        esp-zigbee-lib
+)
+
