@@ -134,7 +134,11 @@ static esp_err_t status_handler(httpd_req_t *request)
     cJSON_AddBoolToObject(root, "config_ap", bc250_wifi_is_config_ap());
     cJSON_AddBoolToObject(root, "zigbee_started", bc250_zigbee_is_started());
     cJSON_AddBoolToObject(root, "zigbee_joined", bc250_zigbee_is_joined());
-    cJSON_AddBoolToObject(root, "ota_enabled", CONFIG_BC250_OTA_ENABLED);
+#ifdef CONFIG_BC250_OTA_ENABLED
+    cJSON_AddBoolToObject(root, "ota_enabled", true);
+#else
+    cJSON_AddBoolToObject(root, "ota_enabled", false);
+#endif
     cJSON *present = cJSON_AddArrayToObject(root, "ble_present");
     const bc250_config_t *config = bc250_config_get();
     for (int i = 0; i < config->ble_device_count; ++i) {

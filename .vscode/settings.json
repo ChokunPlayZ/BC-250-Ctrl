@@ -9,5 +9,6 @@
       "--background-index",
       "--query-driver=**",
       "--compile-commands-dir=/Users/chokun/Projects/BC-250-Ctrl/build"
-    ]
+    ],
+    "idf.flashType": "JTAG"
 }
