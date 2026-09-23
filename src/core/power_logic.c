@@ -76,6 +76,9 @@ static bool begin_start(bc250_power_logic_t *logic, uint64_t now_ms)
     case BC250_START_PS_ON_THEN_BUTTON:
     default:
         logic->outputs.ps_on = true;
+        if (logic->timing.inter_output_delay_ms == 0) {
+            logic->outputs.power_button = true;
+        }
         break;
     }
     return true;
@@ -104,16 +107,29 @@ bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action
     }
     switch (action) {
     case BC250_POWER_ACTION_ON:
+        if (logic->state == BC250_POWER_STOPPING) {
+            return false;
+        }
         if (sensed_on || logic->state == BC250_POWER_STARTING) {
             return true;
         }
         return begin_start(logic, now_ms);
     case BC250_POWER_ACTION_OFF:
+        if (logic->state == BC250_POWER_STARTING) {
+            outputs_off(logic);
+            enter_state(logic, BC250_POWER_OFF, now_ms);
+            return true;
+        }
         if (!sensed_on || logic->state == BC250_POWER_STOPPING) {
             return true;
         }
         return begin_stop(logic, false, now_ms);
     case BC250_POWER_ACTION_FORCE_OFF:
+        if (logic->state == BC250_POWER_STARTING) {
+            outputs_off(logic);
+            enter_state(logic, BC250_POWER_OFF, now_ms);
+            return true;
+        }
         if (!sensed_on) {
             return true;
         }
@@ -132,7 +148,10 @@ static void tick_starting(bc250_power_logic_t *logic, bool sensed_on, uint64_t n
 {
     uint64_t state_age = elapsed(now_ms, logic->state_started_ms);
 
-    if (!logic->button_pulse_completed) {
+    if (sensed_on) {
+        logic->outputs.power_button = false;
+        logic->button_pulse_completed = true;
+    } else if (!logic->button_pulse_completed) {
         bool begin_button = logic->timing.strategy == BC250_START_BUTTON_ONLY ||
                             logic->timing.strategy == BC250_START_SIMULTANEOUS ||
                             state_age >= logic->timing.inter_output_delay_ms;
@@ -239,4 +258,3 @@ const char *bc250_power_state_name(bc250_power_state_t state)
     default: return "unknown";
     }
 }
-

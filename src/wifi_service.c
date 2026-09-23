@@ -19,8 +19,10 @@ static bc250_config_t s_config;
 static esp_netif_t *s_ap_netif;
 static esp_netif_t *s_sta_netif;
 static bool s_wifi_initialized;
+static bool s_wifi_started;
 static bool s_config_ap;
 static bool s_connected;
+static uint32_t s_ap_generation;
 static char s_ip[16] = "0.0.0.0";
 
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
@@ -30,7 +32,7 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_connected = false;
         strlcpy(s_ip, "0.0.0.0", sizeof(s_ip));
         esp_wifi_connect();
-    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP && !s_config_ap) {
         const ip_event_got_ip_t *event = data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&event->ip_info.ip));
         s_connected = true;
@@ -71,6 +73,8 @@ static void dns_task(void *arg)
         vTaskDelete(NULL);
         return;
     }
+    struct timeval receive_timeout = {.tv_sec = 1};
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &receive_timeout, sizeof(receive_timeout));
     uint8_t request[256];
     while (s_config_ap) {
         struct sockaddr_in source;
@@ -97,14 +101,33 @@ static void dns_task(void *arg)
     vTaskDelete(NULL);
 }
 
+static void ap_expiry_task(void *arg)
+{
+    uint32_t generation = (uint32_t)(uintptr_t)arg;
+    vTaskDelay(pdMS_TO_TICKS(15 * 60 * 1000));
+    if (s_config_ap && s_config.configured && generation == s_ap_generation) {
+        s_config_ap = false;
+        bc250_status_led_set_config_mode(false);
+        bool wants_station = s_config.radio_profile == BC250_RADIO_WIFI ||
+                             s_config.radio_profile == BC250_RADIO_HYBRID;
+        if (wants_station) {
+            if (esp_wifi_set_mode(WIFI_MODE_STA) == ESP_OK) esp_wifi_connect();
+        } else if (esp_wifi_stop() == ESP_OK) {
+            s_wifi_started = false;
+        }
+        strlcpy(s_ip, "0.0.0.0", sizeof(s_ip));
+        ESP_LOGI(TAG, "Temporary configuration AP expired");
+    }
+    vTaskDelete(NULL);
+}
+
 static esp_err_t start_ap(void)
 {
     ESP_RETURN_ON_ERROR(init_wifi_once(), TAG, "Wi-Fi init");
     if (s_ap_netif == NULL) s_ap_netif = esp_netif_create_default_wifi_ap();
-    wifi_mode_t current = WIFI_MODE_NULL;
-    esp_wifi_get_mode(&current);
-    wifi_mode_t mode = s_sta_netif != NULL ? WIFI_MODE_APSTA : WIFI_MODE_AP;
-    ESP_RETURN_ON_ERROR(esp_wifi_set_mode(mode), TAG, "AP mode");
+    /* Recovery is AP-only so station-side clients cannot bypass portal auth. */
+    ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_AP), TAG, "AP mode");
+    s_connected = false;
 
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_AP, mac);
@@ -117,12 +140,19 @@ static esp_err_t start_ap(void)
     ap.ap.max_connection = 4;
     ap.ap.pmf_cfg.required = false;
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &ap), TAG, "AP config");
-    esp_err_t err = esp_wifi_start();
-    if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) return err;
+    if (!s_wifi_started) {
+        ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "AP start");
+        s_wifi_started = true;
+    }
     s_config_ap = true;
+    ++s_ap_generation;
     strlcpy(s_ip, "192.168.4.1", sizeof(s_ip));
     bc250_status_led_set_config_mode(true);
     xTaskCreate(dns_task, "captive_dns", 3072, NULL, 3, NULL);
+    if (s_config.configured) {
+        xTaskCreate(ap_expiry_task, "ap_expiry", 2048,
+                    (void *)(uintptr_t)s_ap_generation, 2, NULL);
+    }
     ESP_LOGI(TAG, "Configuration AP %s started", ap.ap.ssid);
     return bc250_web_server_start();
 }
@@ -143,6 +173,7 @@ static esp_err_t start_station(void)
     ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "station mode");
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &sta), TAG, "station config");
     ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "station start");
+    s_wifi_started = true;
     ESP_RETURN_ON_ERROR(esp_wifi_connect(), TAG, "station connect");
     return bc250_web_server_start();
 }

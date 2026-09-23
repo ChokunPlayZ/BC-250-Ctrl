@@ -8,6 +8,7 @@
 #include "ezbee/zha.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "power_service.h"
 
 #define BC250_ZIGBEE_ENDPOINT 1
 #define BC250_ZIGBEE_STORAGE_PARTITION "nvs"
@@ -46,6 +47,7 @@ static bool signal_handler(const ezb_app_signal_t *signal)
         ezb_bdb_comm_status_t status = *(ezb_bdb_comm_status_t *)ezb_app_signal_get_params(signal);
         if (status == EZB_BDB_STATUS_SUCCESS) {
             s_started = true;
+            bc250_zigbee_update_power_state(BC250_POWER_UNKNOWN);
             if (ezb_bdb_is_factory_new()) commission_cb(NULL);
             else s_joined = true;
         }
@@ -75,6 +77,8 @@ static void zcl_handler(ezb_zcl_core_action_callback_id_t callback_id, void *mes
         return;
     }
     bool requested_on = *(bool *)set->in.attribute.data.value;
+    /* Local attribute refreshes mirror the sense input and are not commands. */
+    if (requested_on == bc250_power_service_sensed_on()) return;
     bc250_app_event_t event = {
         .type = BC250_EVENT_BUTTON_ACTION,
         .data.button_action = requested_on ? BC250_BUTTON_ACTION_ON : BC250_BUTTON_ACTION_OFF,
@@ -89,6 +93,8 @@ static esp_err_t create_device(void)
     ezb_af_device_desc_t device = ezb_af_create_device_desc();
     ezb_zha_on_off_light_config_t light = EZB_ZHA_ON_OFF_LIGHT_CONFIG();
     ezb_af_ep_desc_t endpoint = ezb_zha_create_on_off_light(BC250_ZIGBEE_ENDPOINT, &light);
+    /* Keep the server clusters, but identify the endpoint as a controllable output. */
+    ESP_ERROR_CHECK(ezb_af_ep_desc_set_app_device_id(endpoint, EZB_ZHA_ON_OFF_OUTPUT_DEVICE_ID));
     ezb_zcl_cluster_desc_t basic = ezb_af_endpoint_get_cluster_desc(
         endpoint, EZB_ZCL_CLUSTER_ID_BASIC, EZB_ZCL_CLUSTER_SERVER);
     ezb_zcl_basic_cluster_desc_add_attr(basic, EZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID,
@@ -168,8 +174,9 @@ static void update_attribute_cb(void *arg)
 
 void bc250_zigbee_update_power_state(bc250_power_state_t state)
 {
+    (void)state;
     if (!s_started) return;
-    bool on = state == BC250_POWER_ON || state == BC250_POWER_STARTING;
+    bool on = bc250_power_service_sensed_on();
     esp_zigbee_task_queue_post(update_attribute_cb, (void *)(uintptr_t)on);
 }
 

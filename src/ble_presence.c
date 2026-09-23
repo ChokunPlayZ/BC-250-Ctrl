@@ -214,6 +214,9 @@ char *bc250_ble_scan_results_json(void)
         cJSON *item = cJSON_CreateObject();
         cJSON_AddStringToObject(item, "address", address);
         cJSON_AddNumberToObject(item, "address_type", snapshot[i].address_type);
+        cJSON_AddBoolToObject(item, "address_may_rotate",
+                              snapshot[i].address_type == 1 &&
+                              (snapshot[i].address[5] & 0xc0) != 0xc0);
         cJSON_AddNumberToObject(item, "rssi", snapshot[i].rssi);
         cJSON_AddStringToObject(item, "name", snapshot[i].name);
         cJSON_AddItemToArray(array, item);

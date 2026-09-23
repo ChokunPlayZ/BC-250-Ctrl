@@ -45,6 +45,9 @@ static void power_task(void *arg)
 {
     (void)arg;
     uint64_t raw_changed_at = now_ms();
+    uint32_t settle_ms = s_config.sense_on_ms > s_config.sense_off_ms ?
+                         s_config.sense_on_ms : s_config.sense_off_ms;
+    uint64_t sense_ready_at = raw_changed_at + settle_ms;
     bool initial = bc250_gpio_read(&s_config.power_sense);
     s_sensed_on = initial;
     bc250_power_logic_init(&s_logic, &s_config.timing, initial, now_ms());
@@ -52,26 +55,29 @@ static void power_task(void *arg)
     bc250_power_state_t announced = s_logic.state;
 
     while (true) {
+        uint64_t now = now_ms();
+        bool raw = bc250_gpio_read(&s_config.power_sense);
+        bool was_sensed_on = s_sensed_on;
+        s_sensed_on = update_sense(s_sensed_on, raw, &raw_changed_at, now);
+
         bc250_power_action_t action;
-        while (xQueueReceive(s_requests, &action, 0) == pdTRUE) {
+        while (now >= sense_ready_at && xQueueReceive(s_requests, &action, 0) == pdTRUE) {
             portENTER_CRITICAL(&s_lock);
-            bool accepted = bc250_power_request(&s_logic, action, s_sensed_on, now_ms());
-            apply_outputs(&s_logic.outputs);
+            bool accepted = bc250_power_request(&s_logic, action, s_sensed_on, now);
+            bc250_power_outputs_t outputs = s_logic.outputs;
             portEXIT_CRITICAL(&s_lock);
+            apply_outputs(&outputs);
             ESP_LOGI(TAG, "Power action %d %s", action, accepted ? "accepted" : "rejected");
         }
 
-        uint64_t now = now_ms();
-        bool raw = bc250_gpio_read(&s_config.power_sense);
-        s_sensed_on = update_sense(s_sensed_on, raw, &raw_changed_at, now);
-
         portENTER_CRITICAL(&s_lock);
         bc250_power_tick(&s_logic, s_sensed_on, now);
-        apply_outputs(&s_logic.outputs);
+        bc250_power_outputs_t outputs = s_logic.outputs;
         bc250_power_state_t state = s_logic.state;
         portEXIT_CRITICAL(&s_lock);
+        apply_outputs(&outputs);
 
-        if (state != announced) {
+        if (state != announced || s_sensed_on != was_sensed_on) {
             announced = state;
             ESP_LOGI(TAG, "Power state: %s", bc250_power_state_name(state));
             bc250_app_event_t event = {

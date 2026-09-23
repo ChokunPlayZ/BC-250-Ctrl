@@ -28,6 +28,7 @@ typedef struct {
 
 RTC_NOINIT_ATTR static rapid_reset_state_t s_rapid_reset;
 static const char *TAG = "bc250";
+static bool s_boot_config_valid;
 
 static bool detect_triple_reset(void)
 {
@@ -44,9 +45,18 @@ static void healthy_task(void *arg)
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(30000));
     s_rapid_reset.count = 0;
-    ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_config_mark_healthy());
+    const bc250_config_t *config = bc250_config_get();
+    bool station_required = config->configured &&
+                            (config->radio_profile == BC250_RADIO_WIFI ||
+                             config->radio_profile == BC250_RADIO_HYBRID);
+    if (s_boot_config_valid && (!station_required || bc250_wifi_is_connected())) {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_config_mark_healthy());
+    } else {
+        ESP_LOGW(TAG, "Configuration not healthy; opening recovery AP");
+        ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_wifi_open_config_ap());
+    }
     bc250_ota_mark_running_valid();
-    ESP_LOGI(TAG, "Firmware and configuration marked healthy");
+    ESP_LOGI(TAG, "Firmware health check complete");
     vTaskDelete(NULL);
 }
 
@@ -133,10 +143,12 @@ void app_main(void)
     bool pending = false;
     ESP_ERROR_CHECK(bc250_config_store_init(&first_boot, &pending));
     const bc250_config_t *config = bc250_config_get();
-    bool force_ap = detect_triple_reset() || first_boot || !config->configured;
+    bool force_ap = detect_triple_reset() || first_boot || !config->configured ||
+                    bc250_config_recovery_required();
 
     char validation_error[160];
     bool config_valid = bc250_config_validate(config, validation_error, sizeof(validation_error)) == ESP_OK;
+    s_boot_config_valid = config_valid;
     if (!config_valid) {
         ESP_LOGE(TAG, "Configuration invalid; outputs remain disabled: %s", validation_error);
         force_ap = true;
@@ -146,7 +158,7 @@ void app_main(void)
         ESP_ERROR_CHECK(bc250_button_service_start(config));
     }
 
-    ESP_ERROR_CHECK(bc250_ble_presence_start(config));
+    if (config_valid) ESP_ERROR_CHECK(bc250_ble_presence_start(config));
     if (config_valid && config->configured) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_zigbee_service_start(config));
     }
@@ -158,4 +170,3 @@ void app_main(void)
     ESP_LOGI(TAG, "Ready%s%s", force_ap ? " in configuration mode" : "",
              pending ? " with pending configuration" : "");
 }
-

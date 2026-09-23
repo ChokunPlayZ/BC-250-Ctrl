@@ -10,9 +10,11 @@
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mbedtls/base64.h"
+#include "nvs_flash.h"
 #include "ota_service.h"
 #include "power_service.h"
 #include "wifi_service.h"
@@ -24,6 +26,8 @@
 
 static const char *TAG = "web";
 static httpd_handle_t s_server;
+static portMUX_TYPE s_events_lock = portMUX_INITIALIZER_UNLOCKED;
+static unsigned s_event_clients;
 
 static const char INDEX_HTML[] =
 "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -44,6 +48,7 @@ static const char INDEX_HTML[] =
 "<label>New Wi-Fi password<input id=wpass type=password maxlength=64 placeholder='leave blank to keep'></label>"
 "<label>Zigbee channel (0 = auto)<input id=zbchannel type=number min=0 max=26></label>"
 "<label>Zigbee manufacturer<input id=zbmanufacturer maxlength=32></label><label>Zigbee model<input id=zbmodel maxlength=32></label>"
+"<div class=row><button onclick=zigbee('commission')>Join Zigbee network</button><button class=danger onclick=zigbee('reset')>Reset Zigbee network</button></div>"
 "<label>BLE scan interval (ms)<input id=bleinterval type=number min=20></label><label>BLE scan window (ms)<input id=blewindow type=number min=20></label>"
 "<label>BLE absent timeout (ms)<input id=bleabsent type=number min=1000></label></div></section>"
 "<section class=card><h2>Power wiring</h2><p><small>Use -1 for disabled. Safe pins are enforced unless advanced override is selected.</small></p>"
@@ -57,26 +62,30 @@ static const char INDEX_HTML[] =
 "<label>Shutdown timeout (ms)<input id=stoptimeout type=number min=1000></label><label>Force-off hold (ms)<input id=forcehold type=number min=1000></label>"
 "<label>Retry cooldown (ms)<input id=cooldown type=number min=0></label><label>Sense-on filter (ms)<input id=senseon type=number min=1></label>"
 "<label>Sense-off filter (ms)<input id=senseoff type=number min=1></label></div>"
-"<label class=row><input id=advanced type=checkbox> Allow advanced/strapping GPIO choices</label></section>"
+"<label class=row><input id=advanced type=checkbox> Allow advanced/strapping GPIO choices</label><small class=bad>Warning: advanced pins can prevent boot or pulse an output during reset. Verify your exact board schematic and inactive-state bias first.</small></section>"
 "<section class=card><h2>Physical buttons</h2><div id=buttons></div><button onclick=addButton()>Add button</button></section>"
 "<section class=card><h2>BLE controllers</h2><div class=row><button onclick=startScan()>Scan for 15 seconds</button><span id=scanstate></span></div>"
 "<div id=scanresults></div><h3>Configured</h3><div id=bledevices></div></section>"
-"<section class=card><button onclick=save()>Save and reboot</button><label class=row>New admin password<input id=admin type=password minlength=8></label></section>"
-"<script>let cfg={buttons:[],ble_devices:[]};const $=id=>document.getElementById(id);"
+"<section class=card id=otasection hidden><h2>Firmware update</h2><p><small>Upload an application .bin for this exact chip and flash layout. Settings are preserved.</small></p><input id=firmware type=file accept=.bin><button onclick=uploadFirmware()>Upload firmware</button></section>"
+"<section class=card><button onclick=save()>Save and reboot</button><label class=row>New admin password<input id=admin type=password minlength=8></label><p><small>Full factory reset is available only on the configuration AP and also erases the Zigbee network.</small></p><button class=danger onclick=factoryReset()>Full factory reset</button></section>"
+"<script>let cfg={buttons:[],ble_devices:[]};const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]));"
 "async function api(url,opt={}){let r=await fetch(url,opt);if(!r.ok)throw Error(await r.text());let t=await r.text();return t?JSON.parse(t):{}}"
-"function msg(t,bad=false){$('message').innerHTML='<p class='+(bad?'bad':'ok')+'>'+t+'</p>'}"
-"async function status(){try{let s=await api('/api/v1/status');$('status').textContent=`Power: ${s.power_state} · sensed: ${s.sensed_on?'on':'off'} · Wi-Fi: ${s.wifi_ip} · Zigbee: ${s.zigbee_joined?'joined':'not joined'}`;}catch(e){$('status').textContent=e}setTimeout(status,3000)}"
+"function msg(t,bad=false){$('message').className=bad?'bad':'ok';$('message').textContent=t}"
+"async function status(){try{let s=await api('/api/v1/status');$('status').textContent=`Power: ${s.power_state} · sensed: ${s.sensed_on?'on':'off'} · Wi-Fi: ${s.wifi_ip} · Zigbee: ${s.zigbee_joined?'joined':'not joined'}`;$('otasection').hidden=!s.ota_enabled;}catch(e){$('status').textContent=e}}"
 "async function power(action){try{await api('/api/v1/power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});msg('Command accepted')}catch(e){msg(e,true)}}"
+"async function zigbee(action){if(action==='reset'&&!confirm('Reset the Zigbee network?'))return;try{await api('/api/v1/zigbee',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});msg('Zigbee action accepted')}catch(e){msg(e,true)}}"
+"async function factoryReset(){if(!confirm('Erase all controller settings and Zigbee network data?'))return;try{await api('/api/v1/factory-reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'ERASE ALL'})});msg('Factory reset accepted. Rebooting…')}catch(e){msg(e,true)}}"
+"async function uploadFirmware(){let file=$('firmware').files[0];if(!file){msg('Choose an application .bin first',true);return}if(!confirm(`Upload ${file.name} and reboot?`))return;try{await api('/api/v1/update',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});msg('Firmware accepted. Rebooting…')}catch(e){msg(e,true)}}"
 "const actions=['none','on','off','toggle','force_off','config_ap','zigbee_commission','zigbee_reset'];"
 "function actionSelect(v){return '<select>'+actions.map(x=>`<option ${x==v?'selected':''}>${x}</option>`).join('')+'</select>'}"
 "function renderButtons(){let e=$('buttons');e.innerHTML='';cfg.buttons.forEach((b,i)=>{let d=document.createElement('div');d.className='row';d.innerHTML=`<input type=number value='${b.gpio}' title='GPIO'><label><input type=checkbox ${b.active_high?'checked':''}>active high</label><label><input type=checkbox ${b.pull_up?'checked':''}>pull-up</label><input type=number value='${b.debounce_ms}' title='debounce ms'><input type=number value='${b.double_press_ms}' title='double-press ms'><input type=number value='${b.long_press_ms}' title='long-press ms'>${actionSelect(b.short_action)}${actionSelect(b.double_action)}${actionSelect(b.long_action)}<button class=danger>Remove</button>`;let q=d.querySelectorAll('input,select');q[0].onchange=x=>b.gpio=+x.target.value;q[1].onchange=x=>b.active_high=x.target.checked;q[2].onchange=x=>b.pull_up=x.target.checked;q[3].onchange=x=>b.debounce_ms=+x.target.value;q[4].onchange=x=>b.double_press_ms=+x.target.value;q[5].onchange=x=>b.long_press_ms=+x.target.value;q[6].onchange=x=>b.short_action=x.target.value;q[7].onchange=x=>b.double_action=x.target.value;q[8].onchange=x=>b.long_action=x.target.value;d.querySelector('button').onclick=()=>{cfg.buttons.splice(i,1);renderButtons()};e.appendChild(d)})}"
 "function addButton(){cfg.buttons.push({enabled:true,gpio:-1,active_high:false,pull_up:true,debounce_ms:40,double_press_ms:350,long_press_ms:1500,short_action:'toggle',double_action:'none',long_action:'force_off'});renderButtons()}"
-"function renderBle(){let e=$('bledevices');e.innerHTML='';cfg.ble_devices.forEach((b,i)=>{let d=document.createElement('div');d.className='row';d.innerHTML=`<input value='${b.label||''}' placeholder=label><select><option value=0>address</option><option value=1>name exact</option><option value=2>name prefix</option><option value=3>service UUID</option><option value=4>manufacturer data</option></select><input value='${b.value||''}' placeholder=value><input value='${b.mask||''}' placeholder=mask><input type=number value='${b.min_rssi ?? -90}' title='minimum RSSI'><button class=danger>Remove</button>`;let q=d.querySelectorAll('input,select');q[1].value=b.type;q[0].onchange=x=>b.label=x.target.value;q[1].onchange=x=>b.type=+x.target.value;q[2].onchange=x=>b.value=x.target.value;q[3].onchange=x=>b.mask=x.target.value;q[4].onchange=x=>b.min_rssi=+x.target.value;d.querySelector('button').onclick=()=>{cfg.ble_devices.splice(i,1);renderBle()};e.appendChild(d)})}"
+"function renderBle(){let e=$('bledevices');e.innerHTML='';cfg.ble_devices.forEach((b,i)=>{let d=document.createElement('div');d.className='row';d.innerHTML=`<input value='${esc(b.label||'')}' placeholder=label><select><option value=0>address</option><option value=1>name exact</option><option value=2>name prefix</option><option value=3>service UUID</option><option value=4>manufacturer data</option></select><input value='${esc(b.value||'')}' placeholder=value><input value='${esc(b.mask||'')}' placeholder=mask><input type=number value='${Number(b.min_rssi ?? -90)}' title='minimum RSSI'><button class=danger>Remove</button>`;let q=d.querySelectorAll('input,select');q[1].value=b.type;q[0].onchange=x=>b.label=x.target.value;q[1].onchange=x=>b.type=+x.target.value;q[2].onchange=x=>b.value=x.target.value;q[3].onchange=x=>b.mask=x.target.value;q[4].onchange=x=>b.min_rssi=+x.target.value;d.querySelector('button').onclick=()=>{cfg.ble_devices.splice(i,1);renderBle()};e.appendChild(d)})}"
 "async function startScan(){await api('/api/v1/ble/scan',{method:'POST'});$('scanstate').textContent='Scanning…';setTimeout(loadScan,3000)}"
-"async function loadScan(){let a=await api('/api/v1/ble/scan');$('scanresults').innerHTML=a.map(x=>`<div class=row><code>${x.address}</code> ${x.name||'(unnamed)'} ${x.rssi} dBm <button data-a='${x.address}' data-n='${x.name||x.address}'>Add</button></div>`).join('');$('scanresults').querySelectorAll('button').forEach(b=>b.onclick=()=>{cfg.ble_devices.push({enabled:true,type:0,label:b.dataset.n,value:b.dataset.a,mask:'',min_rssi:-90});renderBle()});if(a.length){$('scanstate').textContent=`${a.length} found`;setTimeout(loadScan,3000)}}"
+"async function loadScan(){let a=await api('/api/v1/ble/scan');$('scanresults').innerHTML=a.map(x=>`<div class=row><code>${esc(x.address)}</code> ${esc(x.name||'(unnamed)')} ${Number(x.rssi)} dBm ${x.address_may_rotate?'<small class=bad>Private address may rotate; use stable advertisement data</small>':''}<button data-a='${esc(x.address)}' data-n='${esc(x.name||x.address)}'>Add</button></div>`).join('');$('scanresults').querySelectorAll('button').forEach(b=>b.onclick=()=>{cfg.ble_devices.push({enabled:true,type:0,label:b.dataset.n,value:b.dataset.a,mask:'',min_rssi:-90});renderBle()});if(a.length){$('scanstate').textContent=`${a.length} found`;setTimeout(loadScan,3000)}}"
 "async function load(){cfg=await api('/api/v1/config');$('radio').value=cfg.radio_profile;$('hostname').value=cfg.hostname;$('ssid').value=cfg.wifi_ssid;$('zbchannel').value=cfg.zigbee_channel;$('zbmanufacturer').value=cfg.zigbee_manufacturer;$('zbmodel').value=cfg.zigbee_model;$('bleinterval').value=cfg.ble_scan_interval_ms;$('blewindow').value=cfg.ble_scan_window_ms;$('bleabsent').value=cfg.ble_absent_ms;$('advanced').checked=cfg.advanced_gpio_override;$('pson').value=cfg.pins.ps_on.gpio;$('pbtn').value=cfg.pins.power_button.gpio;$('sense').value=cfg.pins.power_sense.gpio;$('led').value=cfg.pins.status_led.gpio;$('psonactive').checked=cfg.pins.ps_on.active_high;$('pbtnactive').checked=cfg.pins.power_button.active_high;$('senseactive').checked=cfg.pins.power_sense.active_high;$('ledactive').checked=cfg.pins.status_led.active_high;$('strategy').value=cfg.timing.strategy;$('delay').value=cfg.timing.inter_output_delay_ms;$('pulse').value=cfg.timing.button_pulse_ms;$('handoff').value=cfg.timing.handoff_delay_ms;$('starttimeout').value=cfg.timing.start_timeout_ms;$('stoptimeout').value=cfg.timing.shutdown_timeout_ms;$('forcehold').value=cfg.timing.force_off_ms;$('cooldown').value=cfg.timing.retry_cooldown_ms;$('senseon').value=cfg.sense_on_ms;$('senseoff').value=cfg.sense_off_ms;renderButtons();renderBle()}"
 "async function save(){cfg.configured=true;cfg.radio_profile=$('radio').value;cfg.hostname=$('hostname').value;cfg.wifi_ssid=$('ssid').value;cfg.wifi_password=$('wpass').value;cfg.admin_password=$('admin').value;cfg.zigbee_channel=+$('zbchannel').value;cfg.zigbee_manufacturer=$('zbmanufacturer').value;cfg.zigbee_model=$('zbmodel').value;cfg.ble_scan_interval_ms=+$('bleinterval').value;cfg.ble_scan_window_ms=+$('blewindow').value;cfg.ble_absent_ms=+$('bleabsent').value;cfg.advanced_gpio_override=$('advanced').checked;cfg.pins.ps_on.gpio=+$('pson').value;cfg.pins.power_button.gpio=+$('pbtn').value;cfg.pins.power_sense.gpio=+$('sense').value;cfg.pins.status_led.gpio=+$('led').value;cfg.pins.ps_on.active_high=$('psonactive').checked;cfg.pins.power_button.active_high=$('pbtnactive').checked;cfg.pins.power_sense.active_high=$('senseactive').checked;cfg.pins.status_led.active_high=$('ledactive').checked;cfg.timing.strategy=+$('strategy').value;cfg.timing.inter_output_delay_ms=+$('delay').value;cfg.timing.button_pulse_ms=+$('pulse').value;cfg.timing.handoff_delay_ms=+$('handoff').value;cfg.timing.start_timeout_ms=+$('starttimeout').value;cfg.timing.shutdown_timeout_ms=+$('stoptimeout').value;cfg.timing.force_off_ms=+$('forcehold').value;cfg.timing.retry_cooldown_ms=+$('cooldown').value;cfg.sense_on_ms=+$('senseon').value;cfg.sense_off_ms=+$('senseoff').value;try{await api('/api/v1/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});msg('Saved. Rebooting…')}catch(e){msg(e,true)}}"
-"load().catch(e=>msg(e,true));status();</script></body></html>";
+"load().catch(e=>msg(e,true));status();setInterval(status,3000);let events=new EventSource('/api/v1/events');events.addEventListener('status',()=>status());</script></body></html>";
 
 static bool authorized(httpd_req_t *request)
 {
@@ -250,16 +259,128 @@ static esp_err_t ble_scan_get_handler(httpd_req_t *request)
     return err;
 }
 
+static esp_err_t zigbee_handler(httpd_req_t *request)
+{
+    if (!require_auth(request)) return ESP_OK;
+    char *body = NULL;
+    if (receive_body(request, &body, 128) != ESP_OK) {
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid Zigbee action");
+        return ESP_FAIL;
+    }
+    cJSON *json = cJSON_Parse(body);
+    free(body);
+    cJSON *action = json ? cJSON_GetObjectItemCaseSensitive(json, "action") : NULL;
+    esp_err_t err = ESP_ERR_INVALID_ARG;
+    if (cJSON_IsString(action)) {
+        if (strcmp(action->valuestring, "commission") == 0) err = bc250_zigbee_commission();
+        else if (strcmp(action->valuestring, "reset") == 0) err = bc250_zigbee_factory_reset();
+    }
+    cJSON_Delete(json);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(request, "409 Conflict");
+        return httpd_resp_sendstr(request, "Zigbee action unavailable");
+    }
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_sendstr(request, "{\"accepted\":true}");
+}
+
+static void factory_reset_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(750));
+    esp_err_t err = nvs_flash_erase();
+    if (err == ESP_OK) esp_restart();
+    ESP_LOGE(TAG, "Factory reset failed: %s", esp_err_to_name(err));
+    vTaskDelete(NULL);
+}
+
+static esp_err_t factory_reset_handler(httpd_req_t *request)
+{
+    if (!require_auth(request)) return ESP_OK;
+    if (!bc250_wifi_is_config_ap()) {
+        httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Open the configuration AP first");
+        return ESP_FAIL;
+    }
+    char *body = NULL;
+    if (receive_body(request, &body, 128) != ESP_OK) {
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Confirmation required");
+        return ESP_FAIL;
+    }
+    cJSON *json = cJSON_Parse(body);
+    free(body);
+    cJSON *confirm = json ? cJSON_GetObjectItemCaseSensitive(json, "confirm") : NULL;
+    bool confirmed = cJSON_IsString(confirm) && strcmp(confirm->valuestring, "ERASE ALL") == 0;
+    cJSON_Delete(json);
+    if (!confirmed) {
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Confirmation required");
+        return ESP_FAIL;
+    }
+    if (xTaskCreate(factory_reset_task, "factory_reset", 3072, NULL, 2, NULL) != pdPASS) {
+        httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Unable to start reset");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_status(request, "202 Accepted");
+    return httpd_resp_sendstr(request, "{\"accepted\":true,\"rebooting\":true}");
+}
+
+static void events_task(void *arg)
+{
+    httpd_req_t *request = arg;
+    httpd_resp_set_type(request, "text/event-stream");
+    httpd_resp_set_hdr(request, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(request, "Connection", "keep-alive");
+    bc250_power_state_t previous_state = BC250_POWER_UNKNOWN;
+    bool previous_sense = !bc250_power_service_sensed_on();
+    int64_t started = esp_timer_get_time();
+    int64_t keepalive_at = started;
+    while (esp_timer_get_time() - started < 60000000LL) {
+        bc250_power_state_t state = bc250_power_service_state();
+        bool sensed = bc250_power_service_sensed_on();
+        if (state != previous_state || sensed != previous_sense) {
+            char event[192];
+            snprintf(event, sizeof(event),
+                     "event: status\ndata: {\"power_state\":\"%s\",\"sensed_on\":%s}\n\n",
+                     bc250_power_state_name(state), sensed ? "true" : "false");
+            if (httpd_resp_send_chunk(request, event, HTTPD_RESP_USE_STRLEN) != ESP_OK) break;
+            previous_state = state;
+            previous_sense = sensed;
+            keepalive_at = esp_timer_get_time();
+        } else if (esp_timer_get_time() - keepalive_at >= 10000000LL) {
+            if (httpd_resp_send_chunk(request, ": keepalive\n\n", HTTPD_RESP_USE_STRLEN) != ESP_OK) break;
+            keepalive_at = esp_timer_get_time();
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    httpd_resp_send_chunk(request, NULL, 0);
+    httpd_req_async_handler_complete(request);
+    portENTER_CRITICAL(&s_events_lock);
+    --s_event_clients;
+    portEXIT_CRITICAL(&s_events_lock);
+    vTaskDelete(NULL);
+}
+
 static esp_err_t events_handler(httpd_req_t *request)
 {
     if (!require_auth(request)) return ESP_OK;
-    char event[192];
-    snprintf(event, sizeof(event), "event: status\ndata: {\"power_state\":\"%s\",\"sensed_on\":%s}\n\n",
-             bc250_power_state_name(bc250_power_service_state()),
-             bc250_power_service_sensed_on() ? "true" : "false");
-    httpd_resp_set_type(request, "text/event-stream");
-    httpd_resp_set_hdr(request, "Cache-Control", "no-cache");
-    return httpd_resp_sendstr(request, event);
+    portENTER_CRITICAL(&s_events_lock);
+    bool available = s_event_clients < 2;
+    if (available) ++s_event_clients;
+    portEXIT_CRITICAL(&s_events_lock);
+    if (!available) {
+        httpd_resp_set_status(request, "503 Service Unavailable");
+        httpd_resp_sendstr(request, "Too many event clients");
+        return ESP_FAIL;
+    }
+    httpd_req_t *copy = NULL;
+    if (httpd_req_async_handler_begin(request, &copy) != ESP_OK ||
+        xTaskCreate(events_task, "web_events", 4096, copy, 3, NULL) != pdPASS) {
+        if (copy != NULL) httpd_req_async_handler_complete(copy);
+        portENTER_CRITICAL(&s_events_lock);
+        --s_event_clients;
+        portEXIT_CRITICAL(&s_events_lock);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }
 
 static esp_err_t ota_handler(httpd_req_t *request)
@@ -282,7 +403,7 @@ esp_err_t bc250_web_server_start(void)
 {
     if (s_server != NULL) return ESP_OK;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 14;
+    config.max_uri_handlers = 16;
     config.stack_size = 8192;
     config.lru_purge_enable = true;
     ESP_RETURN_ON_ERROR(httpd_start(&s_server, &config), TAG, "HTTP server start");
@@ -294,6 +415,8 @@ esp_err_t bc250_web_server_start(void)
         {.uri = "/api/v1/config", .method = HTTP_PUT, .handler = config_put_handler},
         {.uri = "/api/v1/ble/scan", .method = HTTP_POST, .handler = ble_scan_post_handler},
         {.uri = "/api/v1/ble/scan", .method = HTTP_GET, .handler = ble_scan_get_handler},
+        {.uri = "/api/v1/zigbee", .method = HTTP_POST, .handler = zigbee_handler},
+        {.uri = "/api/v1/factory-reset", .method = HTTP_POST, .handler = factory_reset_handler},
         {.uri = "/api/v1/events", .method = HTTP_GET, .handler = events_handler},
         {.uri = "/api/v1/update", .method = HTTP_POST, .handler = ota_handler},
         {.uri = "/generate_204", .method = HTTP_GET, .handler = captive_handler},

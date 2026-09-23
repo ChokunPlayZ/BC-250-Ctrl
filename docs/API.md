@@ -16,7 +16,7 @@ Returns firmware version, authoritative power state, sensed state, output activi
 {"action":"on"}
 ```
 
-Supported actions are `on`, `off`, `toggle`, and `force_off`. A `409 Conflict` response means the state machine rejected the request, normally because it is cooling down after a fault.
+Supported actions are `on`, `off`, `toggle`, and `force_off`. The response acknowledges that the action was queued; the state machine may subsequently reject a conflicting action or one sent during fault cooldown. Read `/api/v1/status` to observe the result. `409 Conflict` means the action was invalid or the queue was full.
 
 ### `GET /api/v1/config`
 
@@ -36,11 +36,18 @@ Returns recent discovery results with address, address type, name, and RSSI.
 
 ### `GET /api/v1/events`
 
-Returns a server-sent `status` event. The current implementation is a one-shot snapshot; reconnect to receive a fresh event.
+Streams server-sent `status` events when the state or optocoupled sense changes, with keepalives and automatic reconnect after a bounded one-minute session.
+
+### `POST /api/v1/zigbee`
+
+Send `{"action":"commission"}` to start network steering or `{"action":"reset"}` to erase only Zigbee network state.
+
+### `POST /api/v1/factory-reset`
+
+Only available from the configuration AP. Send `{"confirm":"ERASE ALL"}` to erase all NVS configuration and Zigbee network data, then reboot into first-boot provisioning.
 
 ### `POST /api/v1/update`
 
 Available only in 8 MB builds. Send the application binary as the request body. ESP-IDF writes the inactive OTA partition and validates the image before switching boot slots. A newly booted image marks itself valid after 30 seconds.
 
 The endpoint does not accept a complete factory image containing bootloader and partitions.
-

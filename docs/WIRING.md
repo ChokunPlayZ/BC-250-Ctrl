@@ -5,6 +5,7 @@
 - ESP32-C5 or ESP32-C6 development board with adequate exposed GPIOs
 - Three high-CTR phototransistor optocouplers for PS_ON, power-button, and power sensing
 - 430 Ω resistors for 3.3 V-driven optocoupler LEDs
+- External roughly 10 kΩ inactive-state bias resistors for both output GPIOs
 - Power-sense resistor selected for the measured LED voltage
 - Reverse-protection diode across the power-sense optocoupler LED
 - Optional LED and suitable series resistor
@@ -29,6 +30,8 @@ ATX GND    ── optocoupler emitter
 ```
 
 Use a high-CTR optocoupler that can reliably pull `PS_ON#` low with the selected LED current. Connect the transistor in parallel with the BC-250’s existing isolated hold path. The configured GPIO is normally electrically inactive and is asserted only by the power state machine.
+
+For the recommended active-high GPIO drive, add a roughly 10 kΩ pulldown from each output GPIO to ESP ground. This keeps both optocoupler LEDs off while the ESP32 is in reset, before firmware configures its pins. If an active-low driver circuit is used instead, bias its input to the electrically inactive high level. Verify the actual dev board's reset/boot behavior with a meter before connecting the BC-250.
 
 ## Motherboard power-button output
 
@@ -73,4 +76,3 @@ Connect the optional status LED through a suitable current-limiting resistor. Bo
 4. Configure one output, test it against an optocoupler loopback fixture, then connect it to the BC-250.
 5. Add the second output and test all selected sequences.
 6. Only then enable BLE/Zigbee automation.
-

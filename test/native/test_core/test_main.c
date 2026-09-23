@@ -1,6 +1,7 @@
-#include <assert.h>
 #include <stdbool.h>
-#include <stdio.h>
+#include <unity.h>
+
+#define assert(condition) TEST_ASSERT_TRUE(condition)
 
 #include "../../../src/core/power_logic.h"
 #include "../../../src/core/ble_match.h"
@@ -59,6 +60,40 @@ static void test_start_strategies_and_idempotence(void)
     bc250_power_logic_init(&p, &timing, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     assert(p.outputs.ps_on && p.outputs.power_button);
+}
+
+static void test_zero_delay_and_fast_sense(void)
+{
+    bc250_power_logic_t p;
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    timing.inter_output_delay_ms = 0;
+    bc250_power_logic_init(&p, &timing, false, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+    assert(p.outputs.ps_on && p.outputs.power_button);
+
+    timing.inter_output_delay_ms = 500;
+    bc250_power_logic_init(&p, &timing, false, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+    bc250_power_tick(&p, true, 200);
+    assert(p.outputs.ps_on && !p.outputs.power_button);
+    bc250_power_tick(&p, true, 600);
+    assert(!p.outputs.power_button);
+}
+
+static void test_conflicting_commands_deassert_outputs(void)
+{
+    bc250_power_logic_t p;
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    bc250_power_logic_init(&p, &timing, false, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 2));
+    assert(p.state == BC250_POWER_OFF);
+    assert(!p.outputs.ps_on && !p.outputs.power_button);
+
+    bc250_power_logic_init(&p, &timing, true, 100);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, true, 101));
+    assert(!bc250_power_request(&p, BC250_POWER_ACTION_ON, true, 102));
+    assert(p.state == BC250_POWER_STOPPING);
 }
 
 static void test_graceful_and_force_off(void)
@@ -158,14 +193,16 @@ static void test_ble_matchers(void)
 
 int main(void)
 {
-    test_start_sequence();
-    test_start_timeout();
-    test_start_strategies_and_idempotence();
-    test_graceful_and_force_off();
-    test_shutdown_timeout();
-    test_button_gestures();
-    test_presence_deduplication();
-    test_ble_matchers();
-    puts("core tests passed");
-    return 0;
+    UNITY_BEGIN();
+    RUN_TEST(test_start_sequence);
+    RUN_TEST(test_start_timeout);
+    RUN_TEST(test_start_strategies_and_idempotence);
+    RUN_TEST(test_zero_delay_and_fast_sense);
+    RUN_TEST(test_conflicting_commands_deassert_outputs);
+    RUN_TEST(test_graceful_and_force_off);
+    RUN_TEST(test_shutdown_timeout);
+    RUN_TEST(test_button_gestures);
+    RUN_TEST(test_presence_deduplication);
+    RUN_TEST(test_ble_matchers);
+    return UNITY_END();
 }

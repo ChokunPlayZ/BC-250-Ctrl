@@ -1,6 +1,7 @@
 #include "config_store.h"
 
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 
 #include "cJSON.h"
@@ -19,6 +20,7 @@ static const char *KEY_PENDING = "pending";
 static const char *KEY_PENDING_BOOTS = "pboots";
 static bc250_config_t s_config;
 static bool s_using_pending;
+static bool s_recovery_required;
 
 static uint32_t config_crc(const bc250_config_t *config)
 {
@@ -138,6 +140,7 @@ void bc250_config_defaults(bc250_config_t *config)
 
 esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending)
 {
+    s_recovery_required = false;
     if (first_boot != NULL) *first_boot = false;
     if (using_pending != NULL) *using_pending = false;
 
@@ -158,6 +161,7 @@ esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending)
             return ESP_OK;
         }
         ESP_LOGE(TAG, "Pending configuration failed to become healthy; rolling back");
+        s_recovery_required = true;
         nvs_erase_key(handle, KEY_PENDING);
         nvs_erase_key(handle, KEY_PENDING_BOOTS);
         nvs_commit(handle);
@@ -181,6 +185,11 @@ esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending)
 const bc250_config_t *bc250_config_get(void)
 {
     return &s_config;
+}
+
+bool bc250_config_recovery_required(void)
+{
+    return s_recovery_required;
 }
 
 static bool pin_in_use(const bc250_config_t *config, int gpio, int except_button)
@@ -239,6 +248,32 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
     if (config->radio_profile > BC250_RADIO_HYBRID) {
         snprintf(error, error_size, "invalid radio profile");
         return ESP_ERR_INVALID_ARG;
+    }
+    if (config->timing.strategy > BC250_START_SIMULTANEOUS) {
+        snprintf(error, error_size, "invalid start strategy");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (config->configured) {
+        if (config->power_sense.gpio == BC250_GPIO_DISABLED) {
+            snprintf(error, error_size, "power LED sense GPIO is required");
+            return ESP_ERR_INVALID_ARG;
+        }
+        if ((config->timing.strategy == BC250_START_PS_ON_ONLY ||
+             config->timing.strategy == BC250_START_PS_ON_THEN_BUTTON ||
+             config->timing.strategy == BC250_START_SIMULTANEOUS) &&
+            config->ps_on.gpio == BC250_GPIO_DISABLED) {
+            snprintf(error, error_size, "selected start strategy requires PS_ON GPIO");
+            return ESP_ERR_INVALID_ARG;
+        }
+        if (config->power_button.gpio == BC250_GPIO_DISABLED) {
+            snprintf(error, error_size, "power-button GPIO is required for shutdown");
+            return ESP_ERR_INVALID_ARG;
+        }
+        if ((config->radio_profile == BC250_RADIO_WIFI ||
+             config->radio_profile == BC250_RADIO_HYBRID) && config->wifi_ssid[0] == '\0') {
+            snprintf(error, error_size, "Wi-Fi SSID is required for this radio profile");
+            return ESP_ERR_INVALID_ARG;
+        }
     }
     if (config->button_count > BC250_MAX_BUTTONS || config->ble_device_count > BC250_MAX_BLE_DEVICES) {
         snprintf(error, error_size, "too many buttons or BLE devices");
@@ -300,7 +335,8 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         }
     }
     if (config->timing.button_pulse_ms < 50 || config->timing.force_off_ms < 1000 ||
-        config->timing.start_timeout_ms <= config->timing.button_pulse_ms) {
+        config->timing.start_timeout_ms <= config->timing.button_pulse_ms ||
+        config->timing.shutdown_timeout_ms <= config->timing.button_pulse_ms) {
         snprintf(error, error_size, "unsafe power timing values");
         return ESP_ERR_INVALID_ARG;
     }
@@ -466,14 +502,34 @@ static bc250_button_action_t parse_action(const char *value)
     return BC250_BUTTON_ACTION_NONE;
 }
 
-static void patch_pin(cJSON *parent, const char *name, bc250_output_config_t *pin)
+static bool valid_integer(const cJSON *item, double minimum, double maximum)
+{
+    return cJSON_IsNumber(item) && isfinite(item->valuedouble) &&
+           item->valuedouble >= minimum && item->valuedouble <= maximum &&
+           floor(item->valuedouble) == item->valuedouble;
+}
+
+static bool patch_u32(cJSON *parent, const char *name, uint32_t *target, uint32_t maximum)
 {
     cJSON *item = cJSON_GetObjectItemCaseSensitive(parent, name);
-    if (!cJSON_IsObject(item)) return;
+    if (item == NULL) return true;
+    if (!valid_integer(item, 0, maximum)) return false;
+    *target = (uint32_t)item->valuedouble;
+    return true;
+}
+
+static bool patch_pin(cJSON *parent, const char *name, bc250_output_config_t *pin)
+{
+    cJSON *item = cJSON_GetObjectItemCaseSensitive(parent, name);
+    if (!cJSON_IsObject(item)) return true;
     cJSON *gpio = cJSON_GetObjectItemCaseSensitive(item, "gpio");
     cJSON *active = cJSON_GetObjectItemCaseSensitive(item, "active_high");
-    if (cJSON_IsNumber(gpio)) pin->gpio = gpio->valueint;
+    if (gpio != NULL) {
+        if (!valid_integer(gpio, BC250_GPIO_DISABLED, 31)) return false;
+        pin->gpio = (int8_t)gpio->valueint;
+    }
     if (cJSON_IsBool(active)) pin->active_high = cJSON_IsTrue(active);
+    return true;
 }
 
 esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
@@ -499,16 +555,23 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
         strlcpy(config->wifi_password, item->valuestring, sizeof(config->wifi_password));
     }
     item = cJSON_GetObjectItemCaseSensitive(root, "admin_password");
-    if (cJSON_IsString(item) && strlen(item->valuestring) >= 8) {
+    if (cJSON_IsString(item) && item->valuestring[0] != '\0') {
+        if (strlen(item->valuestring) < 8) {
+            cJSON_Delete(root);
+            snprintf(error, error_size, "admin password must contain at least eight characters");
+            return ESP_ERR_INVALID_ARG;
+        }
         bc250_config_set_admin_password(config, item->valuestring);
     }
-#define PATCH_ROOT_U32(field) do { cJSON *v = cJSON_GetObjectItemCaseSensitive(root, #field); \
-    if (cJSON_IsNumber(v) && v->valuedouble >= 0) config->field = (uint32_t)v->valuedouble; } while (0)
-    PATCH_ROOT_U32(sense_on_ms);
-    PATCH_ROOT_U32(sense_off_ms);
-    PATCH_ROOT_U32(ble_scan_interval_ms);
-    PATCH_ROOT_U32(ble_scan_window_ms);
-    PATCH_ROOT_U32(ble_absent_ms);
+    uint32_t number;
+#define PATCH_ROOT_U32(field, maximum) do { number = config->field; \
+    if (!patch_u32(root, #field, &number, maximum)) goto invalid_numeric; \
+    config->field = number; } while (0)
+    PATCH_ROOT_U32(sense_on_ms, UINT16_MAX);
+    PATCH_ROOT_U32(sense_off_ms, UINT16_MAX);
+    PATCH_ROOT_U32(ble_scan_interval_ms, UINT16_MAX);
+    PATCH_ROOT_U32(ble_scan_window_ms, UINT16_MAX);
+    PATCH_ROOT_U32(ble_absent_ms, UINT32_MAX);
 #undef PATCH_ROOT_U32
     item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_channel");
     if (cJSON_IsNumber(item)) config->zigbee_channel = item->valueint;
@@ -521,24 +584,28 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
 
     cJSON *pins = cJSON_GetObjectItemCaseSensitive(root, "pins");
     if (cJSON_IsObject(pins)) {
-        patch_pin(pins, "ps_on", &config->ps_on);
-        patch_pin(pins, "power_button", &config->power_button);
-        patch_pin(pins, "status_led", &config->status_led);
+        if (!patch_pin(pins, "ps_on", &config->ps_on) ||
+            !patch_pin(pins, "power_button", &config->power_button) ||
+            !patch_pin(pins, "status_led", &config->status_led)) goto invalid_numeric;
         bc250_output_config_t sense = {.gpio = config->power_sense.gpio,
                                        .active_high = config->power_sense.active_high};
-        patch_pin(pins, "power_sense", &sense);
+        if (!patch_pin(pins, "power_sense", &sense)) goto invalid_numeric;
         config->power_sense.gpio = sense.gpio;
         config->power_sense.active_high = sense.active_high;
         cJSON *sense_json = cJSON_GetObjectItemCaseSensitive(pins, "power_sense");
         cJSON *v = cJSON_GetObjectItemCaseSensitive(sense_json, "pull_up");
         if (cJSON_IsBool(v)) config->power_sense.pull_up = cJSON_IsTrue(v);
         v = cJSON_GetObjectItemCaseSensitive(sense_json, "debounce_ms");
-        if (cJSON_IsNumber(v) && v->valuedouble >= 0) config->power_sense.debounce_ms = v->valueint;
+        if (v != NULL) {
+            if (!valid_integer(v, 0, UINT16_MAX)) goto invalid_numeric;
+            config->power_sense.debounce_ms = (uint16_t)v->valueint;
+        }
     }
 
     cJSON *timing = cJSON_GetObjectItemCaseSensitive(root, "timing");
-#define PATCH_U32(field) do { cJSON *v = cJSON_GetObjectItemCaseSensitive(timing, #field); \
-    if (cJSON_IsNumber(v) && v->valuedouble >= 0) config->timing.field = (uint32_t)v->valuedouble; } while (0)
+#define PATCH_U32(field) do { \
+    if (!patch_u32(timing, #field, &config->timing.field, UINT32_MAX)) goto invalid_numeric; \
+    } while (0)
     if (cJSON_IsObject(timing)) {
         cJSON *strategy = cJSON_GetObjectItemCaseSensitive(timing, "strategy");
         if (cJSON_IsNumber(strategy)) config->timing.strategy = strategy->valueint;
@@ -555,7 +622,7 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     cJSON *buttons = cJSON_GetObjectItemCaseSensitive(root, "buttons");
     if (cJSON_IsArray(buttons)) {
         int count = cJSON_GetArraySize(buttons);
-        if (count > BC250_MAX_BUTTONS) count = BC250_MAX_BUTTONS;
+        if (count > BC250_MAX_BUTTONS) goto invalid_numeric;
         config->button_count = count;
         for (int i = 0; i < count; ++i) {
             cJSON *src = cJSON_GetArrayItem(buttons, i);
@@ -563,7 +630,10 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
             cJSON *v = cJSON_GetObjectItemCaseSensitive(src, "enabled");
             dst->enabled = !cJSON_IsBool(v) || cJSON_IsTrue(v);
             v = cJSON_GetObjectItemCaseSensitive(src, "gpio");
-            if (cJSON_IsNumber(v)) dst->input.gpio = v->valueint;
+            if (v != NULL) {
+                if (!valid_integer(v, BC250_GPIO_DISABLED, 31)) goto invalid_numeric;
+                dst->input.gpio = (int8_t)v->valueint;
+            }
             v = cJSON_GetObjectItemCaseSensitive(src, "active_high");
             if (cJSON_IsBool(v)) dst->input.active_high = cJSON_IsTrue(v);
             v = cJSON_GetObjectItemCaseSensitive(src, "pull_up");
@@ -586,7 +656,7 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     cJSON *ble = cJSON_GetObjectItemCaseSensitive(root, "ble_devices");
     if (cJSON_IsArray(ble)) {
         int count = cJSON_GetArraySize(ble);
-        if (count > BC250_MAX_BLE_DEVICES) count = BC250_MAX_BLE_DEVICES;
+        if (count > BC250_MAX_BLE_DEVICES) goto invalid_numeric;
         config->ble_device_count = count;
         for (int i = 0; i < count; ++i) {
             cJSON *src = cJSON_GetArrayItem(ble, i);
@@ -609,4 +679,9 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     cJSON_Delete(root);
     finalize_config(config);
     return bc250_config_validate(config, error, error_size);
+
+invalid_numeric:
+    cJSON_Delete(root);
+    snprintf(error, error_size, "numeric value or array length is outside its supported range");
+    return ESP_ERR_INVALID_ARG;
 }

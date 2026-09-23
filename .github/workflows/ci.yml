@@ -32,3 +32,4 @@ jobs:
           python-version: "3.12"
       - run: pip install platformio==6.1.19
       - run: pio run -e ${{ matrix.environment }}
+      - run: python tools/check_image_size.py partitions_${{ contains(matrix.environment, '8mb') && '8mb' || '4mb' }}.csv .pio/build/${{ matrix.environment }}/firmware.bin
