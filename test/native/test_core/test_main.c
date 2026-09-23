@@ -1,7 +1,6 @@
+#include <assert.h>
 #include <stdbool.h>
-#include <unity.h>
-
-#define assert(condition) TEST_ASSERT_TRUE(condition)
+#include <stdint.h>
 
 #include "../../../src/core/power_logic.h"
 #include "../../../src/core/ble_match.h"
@@ -193,16 +192,15 @@ static void test_ble_matchers(void)
 
 int main(void)
 {
-    UNITY_BEGIN();
-    RUN_TEST(test_start_sequence);
-    RUN_TEST(test_start_timeout);
-    RUN_TEST(test_start_strategies_and_idempotence);
-    RUN_TEST(test_zero_delay_and_fast_sense);
-    RUN_TEST(test_conflicting_commands_deassert_outputs);
-    RUN_TEST(test_graceful_and_force_off);
-    RUN_TEST(test_shutdown_timeout);
-    RUN_TEST(test_button_gestures);
-    RUN_TEST(test_presence_deduplication);
-    RUN_TEST(test_ble_matchers);
-    return UNITY_END();
+    test_start_sequence();
+    test_start_timeout();
+    test_start_strategies_and_idempotence();
+    test_zero_delay_and_fast_sense();
+    test_conflicting_commands_deassert_outputs();
+    test_graceful_and_force_off();
+    test_shutdown_timeout();
+    test_button_gestures();
+    test_presence_deduplication();
+    test_ble_matchers();
+    return 0;
 }

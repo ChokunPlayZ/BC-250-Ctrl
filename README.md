@@ -25,27 +25,25 @@ All external GPIO roles default to disabled (`-1`). No output is restored from s
 
 ## Build targets
 
-Use PlatformIO Core **6.1.19** for the four-target matrix. Core 6.2.0 currently selects an incompatible SCons package for the pinned C5 platform and fails before linking; CI installs 6.1.19 explicitly.
+Install and activate a native [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c5/get-started/index.html) environment. The component manifest accepts ESP-IDF 5.5.2 through 6.0.x; CI uses 5.5.4 for C5 and 6.0.1 for C6.
 
-| Environment | Platform / ESP-IDF | Flash | OTA |
+| Profile | Target | Flash | OTA |
 |---|---|---:|---|
-| `esp32c5_4mb` | pioarduino 55.03.39 / IDF 5.5.4 | 4 MB | No |
-| `esp32c5_8mb` | pioarduino 55.03.39 / IDF 5.5.4 | 8 MB | Yes |
-| `esp32c6_4mb` | PlatformIO espressif32 7.0.1 / IDF 6.0.1 | 4 MB | No |
-| `esp32c6_8mb` | PlatformIO espressif32 7.0.1 / IDF 6.0.1 | 8 MB | Yes |
-
-The C5 exception is deliberate: official `espressif32@7.0.1` does not select a RISC-V toolchain for `esp32c5`, even with a custom board definition. The pinned PlatformIO-compatible C5 platform is the smallest reproducible workaround. Both chips use the same application sources and `esp-zigbee-lib` 2.0.4.
+| `esp32c5_4mb` | ESP32-C5 | 4 MB | No |
+| `esp32c5_8mb` | ESP32-C5 | 8 MB | Yes |
+| `esp32c6_4mb` | ESP32-C6 | 4 MB | No |
+| `esp32c6_8mb` | ESP32-C6 | 8 MB | Yes |
 
 Build and upload:
 
 ```sh
-pio run -e esp32c5_4mb
-pio run -e esp32c5_4mb -t upload
-pio device monitor -b 115200
+python3 tools/idf_build.py esp32c5_4mb build
+python3 tools/idf_build.py esp32c5_4mb -p /dev/ttyUSB0 flash monitor
 ```
 
-Change the environment name for C6 or 8 MB hardware. Verify the actual flash capacity before using an 8 MB image.
-Use PlatformIO's upload target or the generated `flash_args` offsets. Do not flash the C5 4 MB fork's convenience `firmware.factory.bin` as a raw image: it places the app at `0x10000`, while the custom 4 MB partition table places it at `0x20000`. The C5 8 MB combined image was generated with the correct `0x30000` app offset, but verify offsets against `flash_args` before using any combined image.
+Change the profile for C6 or 8 MB hardware and use the serial port for your system. The helper invokes `idf.py` directly and keeps each profile's generated configuration and artifacts under `build/<profile>/`. Verify the actual flash capacity before using an 8 MB image.
+
+You can pass any normal `idf.py` action or option after the profile. For example, open configuration with `python3 tools/idf_build.py esp32c5_4mb menuconfig`, or erase and flash with `python3 tools/idf_build.py esp32c5_4mb -p /dev/ttyUSB0 erase-flash flash`.
 
 ## First setup
 
@@ -83,16 +81,18 @@ The embedded web application is compiled into the firmware. There is no cloud de
 Run host tests:
 
 ```sh
-pio test -e native
+cmake -S test/native -B build/host
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure
 ```
 
 Build every target:
 
 ```sh
-pio run -e esp32c5_4mb
-pio run -e esp32c5_8mb
-pio run -e esp32c6_4mb
-pio run -e esp32c6_8mb
+python3 tools/idf_build.py esp32c5_4mb build
+python3 tools/idf_build.py esp32c5_8mb build
+python3 tools/idf_build.py esp32c6_4mb build
+python3 tools/idf_build.py esp32c6_8mb build
 ```
 
 Hardware acceptance still requires an optocoupler loopback fixture and real ZHA/Zigbee2MQTT networks. The detailed checklist is in [docs/TESTING.md](docs/TESTING.md).

@@ -1,0 +1,13 @@
+{
+    "idf.currentSetup": "/Users/chokun/.espressif/v6.1/esp-idf",
+    "idf.openOcdConfigs": [
+        "board/esp32c5-builtin.cfg"
+    ],
+    "idf.customExtraVars": {},
+    "clangd.path": "/Users/chokun/.espressif/tools/esp-clangd/esp-21.1.3_20260408/esp-clangd/bin/clangd",
+    "clangd.arguments": [
+      "--background-index",
+      "--query-driver=**",
+      "--compile-commands-dir=/Users/chokun/Projects/BC-250-Ctrl/build"
+    ]
+}

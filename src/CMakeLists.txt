@@ -33,3 +33,6 @@ idf_component_register(
         nvs_flash
         esp-zigbee-lib
 )
+
+target_compile_definitions(${COMPONENT_LIB} PRIVATE BC250_VERSION="${PROJECT_VER}")
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror=return-type)

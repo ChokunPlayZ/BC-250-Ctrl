@@ -9,27 +9,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install platformio==6.1.19
-      - run: pio test -e native
+      - run: cmake -S test/native -B build/host
+      - run: cmake --build build/host
+      - run: ctest --test-dir build/host --output-on-failure
 
   firmware:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        environment:
-          - esp32c5_4mb
-          - esp32c5_8mb
-          - esp32c6_4mb
-          - esp32c6_8mb
+        include:
+          - profile: esp32c5_4mb
+            target: esp32c5
+            idf: v5.5.4
+            partitions: partitions_4mb.csv
+          - profile: esp32c5_8mb
+            target: esp32c5
+            idf: v5.5.4
+            partitions: partitions_8mb.csv
+          - profile: esp32c6_4mb
+            target: esp32c6
+            idf: v6.0.1
+            partitions: partitions_4mb.csv
+          - profile: esp32c6_8mb
+            target: esp32c6
+            idf: v6.0.1
+            partitions: partitions_8mb.csv
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Build ${{ matrix.profile }} with ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
         with:
-          python-version: "3.12"
-      - run: pip install platformio==6.1.19
-      - run: pio run -e ${{ matrix.environment }}
-      - run: python tools/check_image_size.py partitions_${{ contains(matrix.environment, '8mb') && '8mb' || '4mb' }}.csv .pio/build/${{ matrix.environment }}/firmware.bin
+          esp_idf_version: ${{ matrix.idf }}
+          target: ${{ matrix.target }}
+          path: .
+          command: python tools/idf_build.py ${{ matrix.profile }} build
+      - run: python tools/check_image_size.py ${{ matrix.partitions }} build/${{ matrix.profile }}/bc250_ctrl.bin

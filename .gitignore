@@ -1,11 +1,7 @@
-.pio/
 build/
 sdkconfig
 sdkconfig.old
-sdkconfig.esp32c5_4mb
-sdkconfig.esp32c5_8mb
-sdkconfig.esp32c6_4mb
-sdkconfig.esp32c6_8mb
 dependencies.lock
 managed_components/
+__pycache__/
 .DS_Store

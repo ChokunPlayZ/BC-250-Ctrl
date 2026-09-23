@@ -4,17 +4,13 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 
-#ifndef BC250_OTA_ENABLED
-#define BC250_OTA_ENABLED 0
-#endif
-
-#if BC250_OTA_ENABLED
+#if CONFIG_BC250_OTA_ENABLED
 static const char *TAG = "ota";
 #endif
 
 esp_err_t bc250_ota_handle_http(httpd_req_t *request)
 {
-#if !BC250_OTA_ENABLED
+#if !CONFIG_BC250_OTA_ENABLED
     httpd_resp_send_err(request, HTTPD_404_NOT_FOUND, "OTA requires the 8 MB firmware build");
     return ESP_ERR_NOT_SUPPORTED;
 #else
@@ -63,7 +59,7 @@ esp_err_t bc250_ota_handle_http(httpd_req_t *request)
 
 void bc250_ota_mark_running_valid(void)
 {
-#if BC250_OTA_ENABLED
+#if CONFIG_BC250_OTA_ENABLED
     esp_ota_img_states_t state;
     const esp_partition_t *running = esp_ota_get_running_partition();
     if (running && esp_ota_get_state_partition(running, &state) == ESP_OK &&

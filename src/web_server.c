@@ -20,10 +20,6 @@
 #include "wifi_service.h"
 #include "zigbee_service.h"
 
-#ifndef BC250_OTA_ENABLED
-#define BC250_OTA_ENABLED 0
-#endif
-
 static const char *TAG = "web";
 static httpd_handle_t s_server;
 static portMUX_TYPE s_events_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -138,7 +134,7 @@ static esp_err_t status_handler(httpd_req_t *request)
     cJSON_AddBoolToObject(root, "config_ap", bc250_wifi_is_config_ap());
     cJSON_AddBoolToObject(root, "zigbee_started", bc250_zigbee_is_started());
     cJSON_AddBoolToObject(root, "zigbee_joined", bc250_zigbee_is_joined());
-    cJSON_AddBoolToObject(root, "ota_enabled", BC250_OTA_ENABLED != 0);
+    cJSON_AddBoolToObject(root, "ota_enabled", CONFIG_BC250_OTA_ENABLED);
     cJSON *present = cJSON_AddArrayToObject(root, "ble_present");
     const bc250_config_t *config = bc250_config_get();
     for (int i = 0; i < config->ble_device_count; ++i) {

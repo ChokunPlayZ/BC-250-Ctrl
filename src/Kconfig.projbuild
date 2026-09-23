@@ -1,0 +1,11 @@
+menu "BC-250 Controller"
+
+config BC250_OTA_ENABLED
+    bool "Enable web-based OTA updates"
+    default n
+    help
+        Enable application uploads through the local web interface. This must
+        only be enabled with a partition table that provides OTA data and two
+        OTA application slots.
+
+endmenu
