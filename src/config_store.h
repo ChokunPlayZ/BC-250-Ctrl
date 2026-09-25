@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#define BC250_CONFIG_SCHEMA_VERSION 1U
+#define BC250_CONFIG_SCHEMA_VERSION 2U
 #define BC250_MAX_BUTTONS 8
 #define BC250_MAX_BLE_DEVICES 16
 #define BC250_GPIO_DISABLED (-1)
@@ -73,6 +73,14 @@ typedef struct {
 } bc250_ble_device_config_t;
 
 typedef struct {
+    uint32_t poll_interval_ms;
+    bool enabled;
+    int8_t sda_gpio;
+    int8_t scl_gpio;
+    uint8_t address;
+} bc250_psu_i2c_config_t;
+
+typedef struct {
     uint32_t schema_version;
     uint32_t crc32;
     bool configured;
@@ -101,6 +109,7 @@ typedef struct {
     uint8_t zigbee_channel;
     char zigbee_manufacturer[33];
     char zigbee_model[33];
+    bc250_psu_i2c_config_t psu_i2c;
 } bc250_config_t;
 
 esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending);

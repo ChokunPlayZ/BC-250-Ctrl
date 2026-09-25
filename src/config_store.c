@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <math.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "cJSON.h"
@@ -29,6 +30,15 @@ static uint32_t config_crc(const bc250_config_t *config)
     return esp_crc32_le(0, (const uint8_t *)&copy, sizeof(copy));
 }
 
+static void psu_i2c_defaults(bc250_psu_i2c_config_t *psu)
+{
+    psu->enabled = false;
+    psu->sda_gpio = BC250_GPIO_DISABLED;
+    psu->scl_gpio = BC250_GPIO_DISABLED;
+    psu->address = 0x5f;
+    psu->poll_interval_ms = 2000;
+}
+
 static void finalize_config(bc250_config_t *config)
 {
     config->schema_version = BC250_CONFIG_SCHEMA_VERSION;
@@ -43,12 +53,26 @@ static bool config_blob_valid(const bc250_config_t *config)
 
 static esp_err_t read_blob(nvs_handle_t handle, const char *key, bc250_config_t *config)
 {
+    memset(config, 0, sizeof(*config));
     size_t size = sizeof(*config);
     esp_err_t err = nvs_get_blob(handle, key, config, &size);
     if (err != ESP_OK) {
         return err;
     }
-    return size == sizeof(*config) && config_blob_valid(config) ? ESP_OK : ESP_ERR_INVALID_CRC;
+    if (size == sizeof(*config) && config_blob_valid(config)) return ESP_OK;
+    // Version 1 ended at the Zigbee model, with tail padding up to the next 4-byte boundary.
+    if (size == offsetof(bc250_config_t, psu_i2c) && config->schema_version == 1) {
+        uint32_t saved_crc = config->crc32;
+        config->crc32 = 0;
+        bool valid = saved_crc == esp_crc32_le(0, (const uint8_t *)config, size);
+        config->crc32 = saved_crc;
+        if (valid) {
+            psu_i2c_defaults(&config->psu_i2c);
+            finalize_config(config);
+            return ESP_OK;
+        }
+    }
+    return ESP_ERR_INVALID_CRC;
 }
 
 static esp_err_t write_blob(nvs_handle_t handle, const char *key, const bc250_config_t *source)
@@ -127,6 +151,7 @@ void bc250_config_defaults(bc250_config_t *config)
     config->zigbee_channel = 0;
     strlcpy(config->zigbee_manufacturer, "BC250", sizeof(config->zigbee_manufacturer));
     strlcpy(config->zigbee_model, "BC250 Controller", sizeof(config->zigbee_model));
+    psu_i2c_defaults(&config->psu_i2c);
     for (size_t i = 0; i < BC250_MAX_BUTTONS; ++i) {
         config->buttons[i].input.gpio = BC250_GPIO_DISABLED;
         config->buttons[i].input.active_high = false;
@@ -196,7 +221,9 @@ static bool pin_in_use(const bc250_config_t *config, int gpio, int except_button
 {
     if (gpio < 0) return false;
     if (config->ps_on.gpio == gpio || config->power_button.gpio == gpio ||
-        config->power_sense.gpio == gpio || config->status_led.gpio == gpio) {
+        config->power_sense.gpio == gpio || config->status_led.gpio == gpio ||
+        (config->psu_i2c.enabled &&
+         (config->psu_i2c.sda_gpio == gpio || config->psu_i2c.scl_gpio == gpio))) {
         return true;
     }
     for (int i = 0; i < config->button_count; ++i) {
@@ -293,11 +320,24 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         snprintf(error, error_size, "invalid sense or BLE presence timing");
         return ESP_ERR_INVALID_ARG;
     }
+    if (config->psu_i2c.poll_interval_ms < 500 || config->psu_i2c.poll_interval_ms > 60000 ||
+        config->psu_i2c.address < 0x58 || config->psu_i2c.address > 0x5f) {
+        snprintf(error, error_size, "invalid PSU I2C polling interval or PIC address");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (config->psu_i2c.enabled &&
+        (config->psu_i2c.sda_gpio == BC250_GPIO_DISABLED ||
+         config->psu_i2c.scl_gpio == BC250_GPIO_DISABLED)) {
+        snprintf(error, error_size, "enabled PSU I2C requires SDA and SCL GPIOs");
+        return ESP_ERR_INVALID_ARG;
+    }
     const struct { int gpio; const char *name; } fixed[] = {
         {config->ps_on.gpio, "PS_ON"},
         {config->power_button.gpio, "power button"},
         {config->power_sense.gpio, "power sense"},
         {config->status_led.gpio, "status LED"},
+        {config->psu_i2c.enabled ? config->psu_i2c.sda_gpio : BC250_GPIO_DISABLED, "PSU SDA"},
+        {config->psu_i2c.enabled ? config->psu_i2c.scl_gpio : BC250_GPIO_DISABLED, "PSU SCL"},
     };
     for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i) {
         ESP_RETURN_ON_ERROR(validate_one_pin(config, fixed[i].gpio, fixed[i].name, error, error_size),
@@ -433,6 +473,12 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddNumberToObject(root, "zigbee_channel", config->zigbee_channel);
     cJSON_AddStringToObject(root, "zigbee_manufacturer", config->zigbee_manufacturer);
     cJSON_AddStringToObject(root, "zigbee_model", config->zigbee_model);
+    cJSON *psu = cJSON_AddObjectToObject(root, "psu_i2c");
+    cJSON_AddBoolToObject(psu, "enabled", config->psu_i2c.enabled);
+    cJSON_AddNumberToObject(psu, "sda_gpio", config->psu_i2c.sda_gpio);
+    cJSON_AddNumberToObject(psu, "scl_gpio", config->psu_i2c.scl_gpio);
+    cJSON_AddNumberToObject(psu, "address", config->psu_i2c.address);
+    cJSON_AddNumberToObject(psu, "poll_interval_ms", config->psu_i2c.poll_interval_ms);
 
     cJSON *pins = cJSON_AddObjectToObject(root, "pins");
     cJSON_AddItemToObject(pins, "ps_on", pin_to_json(config->ps_on.gpio, config->ps_on.active_high));
@@ -581,6 +627,30 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_model");
     if (cJSON_IsString(item)) strlcpy(config->zigbee_model, item->valuestring,
                                       sizeof(config->zigbee_model));
+
+    cJSON *psu = cJSON_GetObjectItemCaseSensitive(root, "psu_i2c");
+    if (cJSON_IsObject(psu)) {
+        cJSON *v = cJSON_GetObjectItemCaseSensitive(psu, "enabled");
+        if (cJSON_IsBool(v)) config->psu_i2c.enabled = cJSON_IsTrue(v);
+        v = cJSON_GetObjectItemCaseSensitive(psu, "sda_gpio");
+        if (v != NULL) {
+            if (!valid_integer(v, BC250_GPIO_DISABLED, 31)) goto invalid_numeric;
+            config->psu_i2c.sda_gpio = (int8_t)v->valueint;
+        }
+        v = cJSON_GetObjectItemCaseSensitive(psu, "scl_gpio");
+        if (v != NULL) {
+            if (!valid_integer(v, BC250_GPIO_DISABLED, 31)) goto invalid_numeric;
+            config->psu_i2c.scl_gpio = (int8_t)v->valueint;
+        }
+        v = cJSON_GetObjectItemCaseSensitive(psu, "address");
+        if (v != NULL) {
+            if (!valid_integer(v, 0x58, 0x5f)) goto invalid_numeric;
+            config->psu_i2c.address = (uint8_t)v->valueint;
+        }
+        uint32_t interval = config->psu_i2c.poll_interval_ms;
+        if (!patch_u32(psu, "poll_interval_ms", &interval, 60000)) goto invalid_numeric;
+        config->psu_i2c.poll_interval_ms = interval;
+    }
 
     cJSON *pins = cJSON_GetObjectItemCaseSensitive(root, "pins");
     if (cJSON_IsObject(pins)) {

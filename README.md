@@ -12,6 +12,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 - Reads the board's power LED through an optocoupler, so reported power state comes from the hardware rather than the last command sent.
 - Supports four startup methods: PS_ON only, power button only, PS_ON followed by the power button, or both at the same time.
 - Supports normal shutdown and an explicit five-second force-off action. A failed startup or shutdown enters a fault state instead of repeatedly toggling the outputs.
+- Optionally monitors PSUs using the HP Common Slot protocol, including DPS-1200/750 models, through their 3.3 V I²C PIC interface. The web status and REST API show input/output voltage and current, internal temperature, and the fan reading.
 
 ### Local controls and automation
 
@@ -70,6 +71,7 @@ You can pass any normal `idf.py` action or option after the profile. For example
 3. Join `BC250-Ctrl-XXXX` using that password and open `http://192.168.4.1/`.
 4. Select a radio profile, assign pins from the board’s schematic, set active polarity, and configure the power timings. Configured mode requires power-sense and power-button GPIOs; every start strategy except button-only also requires PS_ON.
 5. Add buttons and BLE controllers as needed. Set an admin password of at least eight characters.
+   For a compatible HP Common Slot PSU, enable PSU I²C and assign SDA/SCL pins after checking [the wiring guide](docs/WIRING.md). The PIC address defaults to decimal 95 (`0x5F`).
 6. For Wi-Fi or hybrid mode, configure a WPA2-or-stronger network; open, WEP, and WPA-only networks are not supported.
 7. Save. The new configuration is staged and applied after reboot. After 30 seconds it becomes active if validation succeeds and any required Wi-Fi station is connected. This check does not validate Zigbee, BLE, power sense, or external hardware.
 
@@ -95,7 +97,7 @@ Address-based BLE matching is unreliable for devices that rotate private address
 
 `app_main` initializes configuration and an event queue used by buttons, BLE arrivals, and Zigbee attribute commands. HTTP handlers call the power queue or Zigbee service directly. `power_service` serializes power actions into the pure `core/power_logic` state machine and alone applies output GPIO levels. The status LED consumes state-machine state, while the Zigbee On/Off attribute mirrors the sensed power input rather than the last command.
 
-The embedded web application is compiled into the firmware. There is no cloud dependency, CDN, MQTT broker, or companion app.
+The embedded web application is compiled into the firmware. There is no cloud dependency, CDN, MQTT broker, or companion app. PSU I²C is optional and read only; switching an HP PSU's output requires a separate hardware connection to its enable signal.
 
 ## Tests
 
@@ -117,3 +119,7 @@ python3 tools/idf_build.py esp32c6_8mb build
 ```
 
 Hardware acceptance still requires an optocoupler loopback fixture and real ZHA/Zigbee2MQTT networks. The detailed checklist is in [docs/TESTING.md](docs/TESTING.md).
+
+## Credits
+
+The HP Common Slot protocol implementation draws on the [DPS-1200-I2C project](https://github.com/ButtSimpleIdeas/DPS-1200-I2C) by Butt Simple Ideas, LLC. Its Arduino examples and documentation provided the register addresses, measurement scaling, and connection guidance. [Richard Aplin's DPS-1200FB work](https://github.com/raplin/DPS-1200FB) helped verify the reply checksum handling.

@@ -15,6 +15,7 @@
 #include "nvs_flash.h"
 #include "ota_service.h"
 #include "power_service.h"
+#include "psu_i2c_service.h"
 #include "status_led.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
@@ -156,6 +157,7 @@ void app_main(void)
         ESP_ERROR_CHECK(bc250_power_service_start(config));
         ESP_ERROR_CHECK(bc250_status_led_start(config));
         ESP_ERROR_CHECK(bc250_button_service_start(config));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_psu_i2c_service_start(config));
     }
 
     if (config_valid) ESP_ERROR_CHECK(bc250_ble_presence_start(config));

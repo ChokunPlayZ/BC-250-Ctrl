@@ -1,14 +1,22 @@
 {
-    "idf.currentSetup": "/Users/chokun/.espressif/v6.1/esp-idf",
+    "idf.currentSetup": "/Users/chokun/.espressif/v5.5.4/esp-idf",
+    "idf.buildPath": "${workspaceFolder}/build/esp32c5_4mb",
+    "idf.sdkconfigFilePath": "${workspaceFolder}/build/esp32c5_4mb/sdkconfig",
+    "idf.sdkconfigDefaults": [
+        "sdkconfig.defaults",
+        "sdkconfig_4mb.defaults"
+    ],
     "idf.openOcdConfigs": [
         "board/esp32c5-builtin.cfg"
     ],
     "idf.customExtraVars": {},
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "idf.flashType": "JTAG",
     "clangd.path": "/Users/chokun/.espressif/tools/esp-clangd/esp-21.1.3_20260408/esp-clangd/bin/clangd",
     "clangd.arguments": [
-      "--background-index",
-      "--query-driver=**",
-      "--compile-commands-dir=/Users/chokun/Projects/BC-250-Ctrl/build"
-    ],
-    "idf.flashType": "JTAG"
+        "--background-index",
+        "--query-driver=**",
+        "--compile-commands-dir=/Users/chokun/Projects/BC-250-Ctrl/build/esp32c5_4mb",
+        "--resource-dir=/Library/Developer/CommandLineTools/usr/lib/clang/21"
+    ]
 }

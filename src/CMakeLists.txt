@@ -8,6 +8,7 @@ idf_component_register(
         "gpio_service.c"
         "ota_service.c"
         "power_service.c"
+        "psu_i2c_service.c"
         "status_led.c"
         "web_server.c"
         "wifi_service.c"
@@ -16,6 +17,7 @@ idf_component_register(
         "core/button_logic.c"
         "core/power_logic.c"
         "core/presence_logic.c"
+        "core/hp_commonslot_protocol.c"
     INCLUDE_DIRS
         "."
         "core"
@@ -24,6 +26,7 @@ idf_component_register(
         bt
         esp_event
         esp_http_server
+        esp_driver_i2c
         esp_netif
         esp_timer
         esp_wifi

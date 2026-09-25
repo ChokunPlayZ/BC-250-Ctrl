@@ -8,7 +8,7 @@ All configuration responses redact the Wi-Fi password and password hash. Sending
 
 ### `GET /api/v1/status`
 
-Returns firmware version, authoritative power state, sensed state, output activity, Wi-Fi status, Zigbee status, OTA capability, and currently present BLE matcher labels.
+Returns firmware version, authoritative power state, sensed state, output activity, Wi-Fi status, Zigbee status, OTA capability, currently present BLE matcher labels, and an HP Common Slot protocol `psu_i2c` object. When PSU I²C is enabled and a complete checksum-verified sample is available, the object includes `age_ms`, `input_voltage_v`, `input_current_a`, `output_voltage_v`, `output_current_a`, `internal_temperature_f`, and `fan_speed_raw`. When communication fails, `available` is false and those values are omitted.
 
 ### `POST /api/v1/power`
 
@@ -24,7 +24,7 @@ Returns the complete non-secret configuration used by the setup UI.
 
 ### `PUT /api/v1/config`
 
-Applies a partial JSON patch, validates pin conflicts and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds.
+Applies a partial JSON patch, validates pin conflicts and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds. `psu_i2c` accepts `enabled`, `sda_gpio`, `scl_gpio`, `address` (decimal 88–95 for `0x58`–`0x5F`), and `poll_interval_ms` (500–60000). It is disabled by default.
 
 ### `POST /api/v1/ble/scan`
 

@@ -6,6 +6,24 @@
 #include "../../../src/core/ble_match.h"
 #include "../../../src/core/button_logic.h"
 #include "../../../src/core/presence_logic.h"
+#include "../../../src/core/hp_commonslot_protocol.h"
+
+static void test_hp_commonslot_protocol(void)
+{
+    uint8_t command[2];
+    bc250_hp_commonslot_read_command(0x5f, 0x08, command);
+    assert(command[0] == 0x08 && command[1] == 0x3a);
+    bc250_hp_commonslot_read_command(0x58, 0x40, command);
+    assert(command[0] == 0x40 && command[1] == 0x10);
+
+    uint16_t raw = 0;
+    const uint8_t good[] = {0x00, 0x0f, 0xf1};
+    const uint8_t bad[] = {0x00, 0x0f, 0xf0};
+    assert(bc250_hp_commonslot_decode_reply(good, &raw) && raw == 0x0f00);
+    assert(!bc250_hp_commonslot_decode_reply(bad, &raw));
+    assert(bc250_hp_commonslot_scale(0, raw) == 120.0f);
+    assert(bc250_hp_commonslot_scale(2, 0x0c00) == 12.0f);
+}
 
 static void test_start_sequence(void)
 {
@@ -192,6 +210,7 @@ static void test_ble_matchers(void)
 
 int main(void)
 {
+    test_hp_commonslot_protocol();
     test_start_sequence();
     test_start_timeout();
     test_start_strategies_and_idempotence();

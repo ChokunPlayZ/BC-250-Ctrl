@@ -68,6 +68,12 @@ Connect the optional status LED through a suitable current-limiting resistor. Bo
 | Fault | Repeating triple flash |
 | Configuration AP | Repeating double pulse |
 
+## Optional HP Common Slot PSU I²C
+
+Connect the PSU PIC's SDA and SCL to configured ESP32 SDA/SCL pins, and connect their signal grounds. The PSU bus uses **3.3 V logic**; never apply 5 V to ESP32 GPIOs. Provide suitable 3.3 V pull-ups if the adapter or supply does not already have them. These direct I²C connections are not optically isolated, so check grounding and the exact PSU connector pinout before wiring. Leave the feature disabled until the connections are verified.
+
+The PIC's 7-bit address is usually `0x5F` when address pins A0–A2 are left high, or `0x58` when all three are low. Other combinations use `0x59`–`0x5E`. This is separate from the EEPROM address. Some models answer only while the PSU is running. The firmware polls read-only registers and reports unavailable data if a transaction or reply checksum fails. There is no known I²C on/off command; switching an HP PSU's output requires a separate connection to its enable signal. Temperature units follow the [reference sketch](https://github.com/ButtSimpleIdeas/DPS-1200-I2C/blob/master/dps1200_read_volts_fan/dps1200_read_volts_fan.ino); the fan value is exposed as a raw reading because its RPM calibration has not been confirmed across models.
+
 ## Bring-up order
 
 1. Flash and boot with every GPIO role disabled.
