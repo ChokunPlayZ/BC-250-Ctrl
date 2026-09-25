@@ -52,6 +52,20 @@ Streams server-sent `status` events when the state or optocoupled sense changes,
 
 Send `{"action":"commission"}` to start network steering or `{"action":"reset"}` to erase only Zigbee network state.
 
+### Zigbee PSU telemetry
+
+When PSU I²C monitoring and Zigbee are both enabled, endpoint 1 exposes the standard Electrical Measurement cluster (`0x0B04`) and Analog Input cluster (`0x000C`). The controller sends attribute reports to coordinator short address `0x0000`, endpoint 1. It sends the first sample after joining, then available samples at least 10 seconds apart (or at the configured PSU poll interval if longer). It reports the transition to unavailable once, and reports again when readings return.
+
+| Reading | Cluster attribute | Zigbee value and scale |
+|---|---|---|
+| PSU input voltage | RMSVoltage `0x0505` | unsigned, value ÷ 10 = V |
+| PSU input current | RMSCurrent `0x0508` | unsigned, value ÷ 100 = A |
+| PSU output voltage | DCVoltage `0x0100` | signed, value ÷ 100 = V |
+| PSU output current | DCCurrent `0x0103` | signed, value ÷ 10 = A |
+| PSU fan reading | Analog Input PresentValue `0x0055` | raw PIC value as a float; **not RPM** |
+
+The corresponding Electrical Measurement multiplier attributes are 1 and divisors are 10 or 100 as shown above. On an invalid PSU sample, the AC attributes become `0xFFFF`, the DC attributes become `0x8000`, and Analog Input StatusFlags `0x006F` sets the fault bit (`0x02`). The fan's PresentValue is then zero and must be ignored while the fault bit is set. Zigbee coordinators can read these attributes directly; presenting each as a named sensor may require a coordinator-specific device definition.
+
 ### `POST /api/v1/factory-reset`
 
 Only available from the configuration AP. Send `{"confirm":"ERASE ALL"}` to erase all NVS configuration and Zigbee network data, then reboot into first-boot provisioning.

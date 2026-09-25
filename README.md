@@ -33,6 +33,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 - Operates as a Zigbee router with standard Basic, Identify, Groups, Scenes, and On/Off clusters.
 - Accepts on, off, and toggle commands from Zigbee controllers such as Home Assistant ZHA or Zigbee2MQTT.
 - Reports the power state measured from the BC-250 instead of assuming a command succeeded.
+- When HP PSU I²C monitoring is enabled, reports input AC voltage/current, output DC voltage/current, and the raw fan reading to the Zigbee coordinator. Periodic reports are spaced at least 10 seconds apart; a failed PSU read or recovery is reported immediately. Fan data is a raw value, not calibrated RPM. See [Zigbee telemetry](docs/API.md#zigbee-psu-telemetry) for attributes and units.
 
 ### Recovery and updates
 

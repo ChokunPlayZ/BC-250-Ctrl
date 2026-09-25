@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "i2c_service.h"
+#include "zigbee_service.h"
 
 static const char *TAG = "psu_i2c";
 static bc250_psu_i2c_config_t s_config;
@@ -57,6 +58,7 @@ static void psu_task(void *arg)
             s_sample_us = esp_timer_get_time();
         }
         portEXIT_CRITICAL(&s_lock);
+        bc250_zigbee_update_psu_status();
         if (err != ESP_OK && !failure_logged) {
             ESP_LOGW(TAG, "PSU telemetry unavailable: %s", esp_err_to_name(err));
             failure_logged = true;
