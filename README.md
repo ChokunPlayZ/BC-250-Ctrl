@@ -70,7 +70,7 @@ You can pass any normal `idf.py` action or option after the profile. For example
 2. Open the serial monitor. On first initialization, note the generated 12-character provisioning password. It is also the initial `admin` password and is printed once.
 3. Join `BC250-Ctrl-XXXX` using that password and open `http://192.168.4.1/`.
 4. Select a radio profile, assign pins from the board’s schematic, set active polarity, and configure the power timings. Configured mode requires power-sense and power-button GPIOs; every start strategy except button-only also requires PS_ON.
-5. Add buttons and BLE controllers as needed. Set an admin password of at least eight characters.
+5. Add buttons and BLE controllers as needed. For the optional local button and status LED, follow the [connection diagrams and matching settings](docs/WIRING.md#local-buttons-and-status-led). Set an admin password of at least eight characters.
    For a compatible HP Common Slot PSU, enable PSU I²C and assign SDA/SCL pins after checking [the wiring guide](docs/WIRING.md). The PIC address defaults to decimal 95 (`0x5F`).
 6. For Wi-Fi or hybrid mode, configure a WPA2-or-stronger network; open, WEP, and WPA-only networks are not supported.
 7. Save. The new configuration is staged and applied after reboot. After 30 seconds it becomes active if validation succeeds and any required Wi-Fi station is connected. This check does not validate Zigbee, BLE, power sense, or external hardware.

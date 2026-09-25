@@ -55,9 +55,31 @@ On the ESP side, connect the transistor collector to the configured GPIO with a 
 
 ## Local buttons and status LED
 
-Local momentary buttons may connect from GPIO to ESP ground with the internal pull-up enabled and active-low selected. Any signal entering from another powered system should be isolated.
+These are optional controls on the ESP32 controller. The **status LED** below is a separate LED driven by the ESP32; it is not the BC-250 power LED used by the [power-state input](#power-state-input). The **local button** below is an ESP32 input; it is not the optocoupled [motherboard power-button output](#motherboard-power-button-output).
 
-Connect the optional status LED through a suitable current-limiting resistor. Both active-high and active-low wiring are supported. Patterns are:
+### Local momentary button
+
+Connect each normally open, momentary pushbutton between its own configured ESP32 GPIO and **ESP ground**:
+
+```text
+ESP GPIO ── pushbutton ── ESP GND
+```
+
+In **Physical buttons** in the web interface, set that button's GPIO, leave **active high** unchecked, and leave **pull-up** checked. The firmware enables the GPIO's internal pull-up, so an unpressed button reads high and a press pulls it low. No external resistor is required for this local connection. If using a four-leg tactile switch, check which legs are internally joined so the GPIO and ground are on opposite sides of the switch. Assign short, double, and long press actions as desired; each button needs a different GPIO.
+
+An active-high alternative is a switch from GPIO to **ESP 3.3 V**. For that circuit, check **active high** and uncheck **pull-up** (the firmware enables an internal pull-down). Never apply 5 V to an ESP32 GPIO. Isolate any signal coming from another powered system.
+
+### Controller status LED
+
+For the default active-high setting, connect a discrete LED and a current-limiting resistor in series:
+
+```text
+ESP GPIO ── resistor ── LED anode (+) ──►|── LED cathode (−) ── ESP GND
+```
+
+In the web interface, set **Status LED GPIO** to this GPIO and leave **active high** checked. The LED lights when the GPIO is high. Select the resistor for the LED's forward voltage and the GPIO's allowed current; a 1 kΩ resistor is a low-current starting point for a typical red LED on 3.3 V. Do not connect an LED directly across a GPIO and ground.
+
+If you need active-low wiring, connect `ESP 3.3 V ── resistor ── LED anode (+) ──►|── LED cathode (−) ── ESP GPIO` and uncheck **active high**. Use a GPIO separate from the buttons and other assigned functions. Leave **Status LED GPIO** at `-1` when no status LED is connected. Its patterns are:
 
 | State | Pattern |
 |---|---|
