@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cJSON.h"
@@ -10,6 +11,8 @@
 #include "esp_crc.h"
 #include "esp_log.h"
 #include "esp_random.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "psa/crypto.h"
@@ -22,6 +25,7 @@ static const char *KEY_PENDING_BOOTS = "pboots";
 static bc250_config_t s_config;
 static bool s_using_pending;
 static bool s_recovery_required;
+static SemaphoreHandle_t s_write_lock;
 
 static uint32_t config_crc(const bc250_config_t *config)
 {
@@ -120,6 +124,69 @@ void bc250_config_set_admin_password(bc250_config_t *config, const char *passwor
     hash_password(config->admin_salt, password, config->admin_hash);
 }
 
+esp_err_t bc250_config_reset_admin_password(char output[17])
+{
+    if (output == NULL) return ESP_ERR_INVALID_ARG;
+    output[0] = '\0';
+    bc250_config_t *next = malloc(sizeof(*next));
+    bc250_config_t *active = malloc(sizeof(*active));
+    if (next == NULL || active == NULL) {
+        free(next);
+        free(active);
+        return ESP_ERR_NO_MEM;
+    }
+    xSemaphoreTake(s_write_lock, portMAX_DELAY);
+    char password[17];
+    random_password(password);
+    *next = s_config;
+    bc250_config_set_admin_password(next, password);
+    finalize_config(next);
+
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err == ESP_OK) {
+        err = read_blob(handle, KEY_ACTIVE, active);
+        if (err == ESP_ERR_NVS_NOT_FOUND || err == ESP_ERR_INVALID_CRC) {
+            *active = s_config;
+            err = ESP_OK;
+        }
+        if (err == ESP_OK) {
+            memcpy(active->admin_salt, next->admin_salt, sizeof(next->admin_salt));
+            memcpy(active->admin_hash, next->admin_hash, sizeof(next->admin_hash));
+            finalize_config(active);
+            err = nvs_set_blob(handle, KEY_ACTIVE, active, sizeof(*active));
+            if (err == ESP_OK) {
+                esp_err_t pending_err = read_blob(handle, KEY_PENDING, active);
+                bool pending_exists = pending_err == ESP_OK;
+                if (s_using_pending && !pending_exists) {
+                    *active = *next;
+                    pending_exists = true;
+                } else if (pending_err != ESP_OK && pending_err != ESP_ERR_NVS_NOT_FOUND &&
+                           pending_err != ESP_ERR_INVALID_CRC) {
+                    err = pending_err;
+                }
+                if (err == ESP_OK && pending_exists) {
+                    memcpy(active->admin_salt, next->admin_salt, sizeof(next->admin_salt));
+                    memcpy(active->admin_hash, next->admin_hash, sizeof(next->admin_hash));
+                    finalize_config(active);
+                    err = nvs_set_blob(handle, KEY_PENDING, active, sizeof(*active));
+                }
+            }
+            if (err == ESP_OK) err = nvs_commit(handle);
+        }
+        nvs_close(handle);
+    }
+    if (err == ESP_OK) {
+        s_config = *next;
+        strlcpy(output, password, 17);
+    }
+    memset(password, 0, sizeof(password));
+    xSemaphoreGive(s_write_lock);
+    free(next);
+    free(active);
+    return err;
+}
+
 void bc250_config_defaults(bc250_config_t *config)
 {
     if (config == NULL) {
@@ -165,6 +232,10 @@ void bc250_config_defaults(bc250_config_t *config)
 
 esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending)
 {
+    if (s_write_lock == NULL) {
+        s_write_lock = xSemaphoreCreateMutex();
+        if (s_write_lock == NULL) return ESP_ERR_NO_MEM;
+    }
     s_recovery_required = false;
     if (first_boot != NULL) *first_boot = false;
     if (using_pending != NULL) *using_pending = false;
@@ -410,26 +481,37 @@ esp_err_t bc250_config_save_pending(const bc250_config_t *config)
 {
     char error[128];
     ESP_RETURN_ON_ERROR(bc250_config_validate(config, error, sizeof(error)), TAG, "%s", error);
+    xSemaphoreTake(s_write_lock, portMAX_DELAY);
     nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle), TAG, "open NVS");
-    esp_err_t err = write_blob(handle, KEY_PENDING, config);
-    nvs_close(handle);
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err == ESP_OK) {
+        err = write_blob(handle, KEY_PENDING, config);
+        nvs_close(handle);
+    }
+    xSemaphoreGive(s_write_lock);
     return err;
 }
 
 esp_err_t bc250_config_mark_healthy(void)
 {
-    if (!s_using_pending) return ESP_OK;
-    nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle), TAG, "open NVS");
-    esp_err_t err = write_blob(handle, KEY_ACTIVE, &s_config);
-    if (err == ESP_OK) {
-        nvs_erase_key(handle, KEY_PENDING);
-        nvs_erase_key(handle, KEY_PENDING_BOOTS);
-        err = nvs_commit(handle);
+    xSemaphoreTake(s_write_lock, portMAX_DELAY);
+    if (!s_using_pending) {
+        xSemaphoreGive(s_write_lock);
+        return ESP_OK;
     }
-    nvs_close(handle);
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err == ESP_OK) {
+        err = write_blob(handle, KEY_ACTIVE, &s_config);
+        if (err == ESP_OK) {
+            nvs_erase_key(handle, KEY_PENDING);
+            nvs_erase_key(handle, KEY_PENDING_BOOTS);
+            err = nvs_commit(handle);
+        }
+        nvs_close(handle);
+    }
     if (err == ESP_OK) s_using_pending = false;
+    xSemaphoreGive(s_write_lock);
     return err;
 }
 

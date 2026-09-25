@@ -10,6 +10,8 @@ idf_component_register(
         "ota_service.c"
         "power_service.c"
         "psu_i2c_service.c"
+        "serial_service.c"
+        "status_service.c"
         "status_led.c"
         "web_server.c"
         "wifi_service.c"
@@ -28,6 +30,8 @@ idf_component_register(
         esp_event
         esp_http_server
         esp_driver_i2c
+        esp_driver_uart
+        esp_driver_usb_serial_jtag
         esp_netif
         esp_timer
         esp_wifi

@@ -17,12 +17,29 @@ PROFILES = {
 }
 
 
+def migrate_c5_console(sdkconfig: Path) -> None:
+    """Move older generated C5 profiles from UART0 to native USB input."""
+    if not sdkconfig.exists():
+        return
+    current = sdkconfig.read_text()
+    if "CONFIG_ESP_CONSOLE_UART_DEFAULT=y" not in current:
+        return
+    current = current.replace(
+        "CONFIG_ESP_CONSOLE_UART_DEFAULT=y",
+        "# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set",
+    ).replace(
+        "# CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG is not set",
+        "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y",
+    )
+    sdkconfig.write_text(current)
+
+
 def usage() -> str:
     profiles = " | ".join(PROFILES)
     return (
         f"Usage: {Path(sys.argv[0]).name} <{profiles}> [idf.py options/actions]\n"
         "Example: python tools/idf_build.py esp32c5_4mb build\n"
-        "Example: python tools/idf_build.py esp32c6_8mb -p /dev/ttyUSB0 flash monitor"
+        "Example: python tools/idf_build.py esp32c5_4mb -p PORT flash monitor"
     )
 
 
@@ -48,6 +65,9 @@ def main() -> int:
     build_dir = PROJECT_ROOT / "build" / profile
     sdkconfig = build_dir / "sdkconfig"
     defaults = f"sdkconfig.defaults;{profile_defaults}"
+    if target == "esp32c5":
+        defaults += ";sdkconfig_c5_usb.defaults"
+        migrate_c5_console(sdkconfig)
     actions = sys.argv[2:] or ["build"]
 
     command = [

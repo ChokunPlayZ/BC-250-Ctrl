@@ -16,6 +16,7 @@
 #include "ota_service.h"
 #include "power_service.h"
 #include "psu_i2c_service.h"
+#include "serial_service.h"
 #include "status_led.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
@@ -165,6 +166,8 @@ void app_main(void)
         ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_zigbee_service_start(config));
     }
     ESP_ERROR_CHECK(bc250_wifi_service_start(config, force_ap));
+
+    ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_serial_service_start());
 
     xTaskCreate(dispatcher_task, "dispatcher", 4096, NULL, 7, NULL);
     xTaskCreate(healthy_task, "healthy", 3072, NULL, 2, NULL);

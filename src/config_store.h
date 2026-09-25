@@ -125,6 +125,8 @@ esp_err_t bc250_config_factory_reset(void);
 bool bc250_config_pin_is_safe(int gpio);
 bool bc250_config_password_verify(const char *password);
 void bc250_config_set_admin_password(bc250_config_t *config, const char *password);
+/* Generates and persists a new admin password; output is populated only on success. */
+esp_err_t bc250_config_reset_admin_password(char output[17]);
 char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets);
 esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
                                   char *error, size_t error_size);

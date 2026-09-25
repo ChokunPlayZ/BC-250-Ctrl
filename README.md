@@ -25,6 +25,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 
 - Provides a browser-based setup and control interface stored entirely in the firmware.
 - Offers a local REST API and live power-state updates for integrations.
+- Accepts serial commands for status and telemetry queries, configuration, power control, scans, Zigbee, and admin password recovery.
 - Supports Wi-Fi-only, Zigbee-only, and combined Wi-Fi/Zigbee operation. BLE scanning remains available in every profile.
 - Exposes the web interface during Wi-Fi operation and through the temporary setup access point. Zigbee-only mode does not keep Wi-Fi running after setup.
 
@@ -58,12 +59,12 @@ Build and upload:
 
 ```sh
 python3 tools/idf_build.py esp32c5_4mb build
-python3 tools/idf_build.py esp32c5_4mb -p /dev/ttyUSB0 flash monitor
+python3 tools/idf_build.py esp32c5_4mb -p PORT flash monitor
 ```
 
-Change the profile for C6 or 8 MB hardware and use the serial port for your system. The helper invokes `idf.py` directly and keeps each profile's generated configuration and artifacts under `build/<profile>/`. Verify the actual flash capacity before using an 8 MB image.
+Change the profile for C6 or 8 MB hardware and use the serial port for your system. For C5 profiles, connect the ESP32-C5's native USB Serial/JTAG port (not a USB-to-UART bridge port); `PORT` is typically `/dev/ttyACM0` on Linux or a `/dev/cu.*` device on macOS. The helper invokes `idf.py` directly and keeps each profile's generated configuration and artifacts under `build/<profile>/`. Verify the actual flash capacity before using an 8 MB image.
 
-You can pass any normal `idf.py` action or option after the profile. For example, open configuration with `python3 tools/idf_build.py esp32c5_4mb menuconfig`, or erase and flash with `python3 tools/idf_build.py esp32c5_4mb -p /dev/ttyUSB0 erase-flash flash`.
+You can pass any normal `idf.py` action or option after the profile. For example, open configuration with `python3 tools/idf_build.py esp32c5_4mb menuconfig`, or erase and flash with `python3 tools/idf_build.py esp32c5_4mb -p PORT erase-flash flash`.
 
 ## First setup
 
@@ -77,7 +78,7 @@ You can pass any normal `idf.py` action or option after the profile. For example
 7. Save. The new configuration is staged and applied after reboot. After 30 seconds it becomes active if validation succeeds and any required Wi-Fi station is connected. This check does not validate Zigbee, BLE, power sense, or external hardware.
 
 All UI and API endpoints bypass HTTP Basic authentication while the setup AP is active and rely on its WPA2 password. Anyone joined to the AP can issue control and configuration commands and, on 8 MB builds, upload firmware. A configured device's recovery AP expires after 15 minutes; first-boot provisioning stays open until configured. In normal Wi-Fi operation, sign in as user `admin` with the configured password. If configuration becomes inaccessible, reset the ESP32 three times consecutively without allowing either of the first two boots to run for 30 seconds.
-The web interface can reset just the Zigbee network, or perform a full factory reset from the configuration AP; the latter also erases controller settings and returns to first-boot provisioning.
+The web interface can reset just the Zigbee network, or perform a full factory reset from the configuration AP; the latter also erases controller settings and returns to first-boot provisioning. The [serial command interface](docs/SERIAL.md) is also available without Wi-Fi and can generate a new admin password without erasing settings.
 
 The local web service uses HTTP, so Basic-auth credentials are visible to anyone who can inspect traffic on that network. Keep it on a trusted LAN and never port-forward it. CRC protects configuration integrity, not confidentiality: Wi-Fi/AP credentials are stored in NVS, and flash encryption is not enabled by default. Secure Boot is also not enabled; the default OTA build checks image integrity but does not require a cryptographic signature.
 
@@ -96,7 +97,7 @@ Address-based BLE matching is unreliable for devices that rotate private address
 
 ## Architecture
 
-`app_main` initializes configuration and an event queue used by buttons, BLE arrivals, and Zigbee attribute commands. HTTP handlers call the power queue or Zigbee service directly. `power_service` serializes power actions into the pure `core/power_logic` state machine and alone applies output GPIO levels. The status LED consumes state-machine state, while the Zigbee On/Off attribute mirrors the sensed power input rather than the last command. The shared `i2c_service` owns the I²C bus, coordinates device transactions and scans, and can serve additional I²C clients alongside PSU monitoring.
+`app_main` initializes configuration, the serial command task, and an event queue used by buttons, BLE arrivals, and Zigbee attribute commands. HTTP and serial handlers call the power queue or Zigbee service directly. `power_service` serializes power actions into the pure `core/power_logic` state machine and alone applies output GPIO levels. The status LED consumes state-machine state, while the Zigbee On/Off attribute mirrors the sensed power input rather than the last command. The shared `i2c_service` owns the I²C bus, coordinates device transactions and scans, and can serve additional I²C clients alongside PSU monitoring.
 
 The embedded web application is compiled into the firmware. There is no cloud dependency, CDN, MQTT broker, or companion app. PSU I²C is optional and read only; switching an HP PSU's output requires a separate hardware connection to its enable signal.
 

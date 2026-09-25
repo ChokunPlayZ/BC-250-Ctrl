@@ -26,6 +26,10 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Corrupt the NVS blob and verify safe defaults with all external roles disabled.
 - Verify triple-reset recovery without configured buttons.
 - Verify factory reset separately from Zigbee network reset.
+- Exercise serial status/configuration queries, power commands, BLE/I²C scans, Zigbee commands, and the setup AP command in each radio profile.
+- Reset the admin password over serial during an active pending configuration, verify immediate web login with the new password, then force rollback and verify the new password still works.
+- Verify serial oversized commands are rejected and the next command still succeeds.
+- On both C5 flash layouts, connect through the chip's native USB Serial/JTAG port and verify `help`, `status`, `config get`, and `admin reset` accept input after boot and after reconnecting USB.
 
 ## Radio interoperability
 
@@ -43,4 +47,3 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Interrupt an upload and confirm the running slot remains bootable.
 - Reject corrupt or wrong-target images.
 - Boot a deliberately unhealthy image and confirm rollback.
-
