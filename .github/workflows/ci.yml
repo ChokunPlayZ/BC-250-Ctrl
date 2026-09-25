@@ -2,7 +2,23 @@ name: firmware
 
 on:
   push:
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'CMakeLists.txt'
+      - 'partitions*.csv'
+      - 'sdkconfig*.defaults'
+      - 'src/**'
+      - 'test/native/**'
+      - 'tools/**'
   pull_request:
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'CMakeLists.txt'
+      - 'partitions*.csv'
+      - 'sdkconfig*.defaults'
+      - 'src/**'
+      - 'test/native/**'
+      - 'tools/**'
 
 jobs:
   native-tests:
