@@ -2,15 +2,14 @@
 
 #include "core/hp_commonslot_protocol.h"
 #include "driver/i2c_master.h"
-#include "esp_check.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "i2c_service.h"
 
 static const char *TAG = "psu_i2c";
 static bc250_psu_i2c_config_t s_config;
-static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_device;
 static bc250_psu_i2c_status_t s_status;
 static int64_t s_sample_us;
@@ -18,16 +17,21 @@ static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static esp_err_t read_register(uint8_t reg, uint16_t *raw)
 {
+    bc250_i2c_service_lock();
     uint8_t command[2];
     uint8_t reply[3];
     bc250_hp_commonslot_read_command(s_config.address, reg, command);
     esp_err_t err = i2c_master_transmit(s_device, command, sizeof(command), 100);
-    if (err != ESP_OK) return err;
-    // The reference sketch uses separate transactions with a short pause.
-    vTaskDelay(pdMS_TO_TICKS(1) > 0 ? pdMS_TO_TICKS(1) : 1);
-    err = i2c_master_receive(s_device, reply, sizeof(reply), 100);
-    if (err != ESP_OK) return err;
-    return bc250_hp_commonslot_decode_reply(reply, raw) ? ESP_OK : ESP_ERR_INVALID_CRC;
+    if (err == ESP_OK) {
+        // The reference sketch uses separate transactions with a short pause.
+        vTaskDelay(pdMS_TO_TICKS(1) > 0 ? pdMS_TO_TICKS(1) : 1);
+        err = i2c_master_receive(s_device, reply, sizeof(reply), 100);
+        if (err == ESP_OK && !bc250_hp_commonslot_decode_reply(reply, raw)) {
+            err = ESP_ERR_INVALID_CRC;
+        }
+    }
+    bc250_i2c_service_unlock();
+    return err;
 }
 
 static void psu_task(void *arg)
@@ -71,28 +75,13 @@ esp_err_t bc250_psu_i2c_service_start(const bc250_config_t *config)
     s_status.enabled = s_config.enabled;
     if (!s_config.enabled) return ESP_OK;
 
-    i2c_master_bus_config_t bus_config = {
-        .i2c_port = I2C_NUM_0,
-        .sda_io_num = s_config.sda_gpio,
-        .scl_io_num = s_config.scl_gpio,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = false,
-    };
-    ESP_RETURN_ON_ERROR(i2c_new_master_bus(&bus_config, &s_bus), TAG, "create I2C bus");
-    i2c_device_config_t device_config = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = s_config.address,
-        .scl_speed_hz = 100000,
-    };
-    esp_err_t err = i2c_master_bus_add_device(s_bus, &device_config, &s_device);
-    if (err != ESP_OK) {
-        i2c_del_master_bus(s_bus);
-        return err;
-    }
+    esp_err_t err = bc250_i2c_service_start(s_config.sda_gpio, s_config.scl_gpio);
+    if (err != ESP_OK) return err;
+    err = bc250_i2c_service_add_device(s_config.address, 100000, &s_device);
+    if (err != ESP_OK) return err;
     if (xTaskCreate(psu_task, "psu_i2c", 3072, NULL, 5, NULL) != pdPASS) {
-        i2c_master_bus_rm_device(s_device);
-        i2c_del_master_bus(s_bus);
+        bc250_i2c_service_remove_device(s_device);
+        s_device = NULL;
         return ESP_ERR_NO_MEM;
     }
     return ESP_OK;

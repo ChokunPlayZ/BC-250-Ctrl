@@ -264,6 +264,29 @@ static esp_err_t validate_one_pin(const bc250_config_t *config, int gpio,
     return ESP_OK;
 }
 
+esp_err_t bc250_config_validate_i2c_pins(const bc250_config_t *config, int sda_gpio,
+                                         int scl_gpio, char *error, size_t error_size)
+{
+    if (config == NULL || error == NULL || error_size == 0) return ESP_ERR_INVALID_ARG;
+    error[0] = '\0';
+    if (sda_gpio < 0 || scl_gpio < 0 || sda_gpio == scl_gpio) {
+        snprintf(error, error_size, "I2C requires distinct SDA and SCL GPIOs");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (validate_one_pin(config, sda_gpio, "I2C SDA", error, error_size) != ESP_OK ||
+        validate_one_pin(config, scl_gpio, "I2C SCL", error, error_size) != ESP_OK) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    // The active I2C pins may be scanned; all other configured GPIO roles are excluded.
+    bc250_config_t other_roles = *config;
+    other_roles.psu_i2c.enabled = false;
+    if (pin_in_use(&other_roles, sda_gpio, -1) || pin_in_use(&other_roles, scl_gpio, -1)) {
+        snprintf(error, error_size, "I2C scan pins conflict with a configured GPIO role");
+        return ESP_ERR_INVALID_ARG;
+    }
+    return ESP_OK;
+}
+
 esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_t error_size)
 {
     if (config == NULL || error == NULL || error_size == 0) return ESP_ERR_INVALID_ARG;

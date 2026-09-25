@@ -34,6 +34,16 @@ Starts a 15-second active discovery scan.
 
 Returns recent discovery results with address, address type, name, and RSSI.
 
+### `POST /api/v1/i2c/scan`
+
+Scans 7-bit I²C addresses `0x08`–`0x77` on the supplied SDA/SCL pins and returns decimal addresses. The pins must pass the same safety and conflict checks as PSU configuration. If the PSU monitor is already running, the request must use its active pins. The scan does not change saved settings.
+
+```json
+{"sda_gpio":4,"scl_gpio":5}
+```
+
+Example response: `{"addresses":[88,95]}`. A `409 Conflict` means the running I²C bus uses different pins; a scan timeout indicates a bus or pull-up problem.
+
 ### `GET /api/v1/events`
 
 Streams server-sent `status` events when the state or optocoupled sense changes, with keepalives and automatic reconnect after a bounded one-minute session.

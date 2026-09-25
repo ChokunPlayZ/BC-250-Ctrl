@@ -71,7 +71,7 @@ You can pass any normal `idf.py` action or option after the profile. For example
 3. Join `BC250-Ctrl-XXXX` using that password and open `http://192.168.4.1/`.
 4. Select a radio profile, assign pins from the board’s schematic, set active polarity, and configure the power timings. Configured mode requires power-sense and power-button GPIOs; every start strategy except button-only also requires PS_ON.
 5. Add buttons and BLE controllers as needed. For the optional local button and status LED, follow the [connection diagrams and matching settings](docs/WIRING.md#local-buttons-and-status-led). Set an admin password of at least eight characters.
-   For a compatible HP Common Slot PSU, enable PSU I²C and assign SDA/SCL pins after checking [the wiring guide](docs/WIRING.md). The PIC address defaults to decimal 95 (`0x5F`).
+   For a compatible HP Common Slot PSU, assign SDA/SCL pins after checking [the wiring guide](docs/WIRING.md). The UI can scan the bus and select a detected PIC address before saving; the PIC address defaults to decimal 95 (`0x5F`). Enable PSU I²C to monitor it after reboot.
 6. For Wi-Fi or hybrid mode, configure a WPA2-or-stronger network; open, WEP, and WPA-only networks are not supported.
 7. Save. The new configuration is staged and applied after reboot. After 30 seconds it becomes active if validation succeeds and any required Wi-Fi station is connected. This check does not validate Zigbee, BLE, power sense, or external hardware.
 
@@ -95,7 +95,7 @@ Address-based BLE matching is unreliable for devices that rotate private address
 
 ## Architecture
 
-`app_main` initializes configuration and an event queue used by buttons, BLE arrivals, and Zigbee attribute commands. HTTP handlers call the power queue or Zigbee service directly. `power_service` serializes power actions into the pure `core/power_logic` state machine and alone applies output GPIO levels. The status LED consumes state-machine state, while the Zigbee On/Off attribute mirrors the sensed power input rather than the last command.
+`app_main` initializes configuration and an event queue used by buttons, BLE arrivals, and Zigbee attribute commands. HTTP handlers call the power queue or Zigbee service directly. `power_service` serializes power actions into the pure `core/power_logic` state machine and alone applies output GPIO levels. The status LED consumes state-machine state, while the Zigbee On/Off attribute mirrors the sensed power input rather than the last command. The shared `i2c_service` owns the I²C bus, coordinates device transactions and scans, and can serve additional I²C clients alongside PSU monitoring.
 
 The embedded web application is compiled into the firmware. There is no cloud dependency, CDN, MQTT broker, or companion app. PSU I²C is optional and read only; switching an HP PSU's output requires a separate hardware connection to its enable signal.
 

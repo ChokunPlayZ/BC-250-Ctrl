@@ -13,6 +13,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "i2c_service.h"
 #include "mbedtls/base64.h"
 #include "nvs_flash.h"
 #include "ota_service.h"
@@ -45,7 +46,9 @@ static const char INDEX_HTML[] =
 "<label>SDA GPIO<input id=psusda type=number min=-1 max=31></label>"
 "<label>SCL GPIO<input id=psuscl type=number min=-1 max=31></label>"
 "<label>PIC address (decimal)<input id=psuaddress type=number min=88 max=95></label>"
-"<label>Poll interval (ms)<input id=psupoll type=number min=500 max=60000></label></div></section>"
+"<label>Poll interval (ms)<input id=psupoll type=number min=500 max=60000></label></div>"
+"<div class=row><button id=i2cscanbutton onclick=scanI2c()>Scan I²C bus</button><span id=i2cscanstate></span></div>"
+"<div id=i2cscanresults></div><small>Scans the SDA/SCL pins shown above. The running PSU monitor must use the same pins.</small></section>"
 "<section class=card><h2>Radio and network</h2><div class=grid>"
 "<label>Operating profile<select id=radio><option>wifi</option><option>zigbee</option><option>hybrid</option></select></label>"
 "<label>Hostname<input id=hostname maxlength=31></label><label>Wi-Fi SSID<input id=ssid maxlength=32></label>"
@@ -87,6 +90,7 @@ static const char INDEX_HTML[] =
 "function renderBle(){let e=$('bledevices');e.innerHTML='';cfg.ble_devices.forEach((b,i)=>{let d=document.createElement('div');d.className='row';d.innerHTML=`<input value='${esc(b.label||'')}' placeholder=label><select><option value=0>address</option><option value=1>name exact</option><option value=2>name prefix</option><option value=3>service UUID</option><option value=4>manufacturer data</option></select><input value='${esc(b.value||'')}' placeholder=value><input value='${esc(b.mask||'')}' placeholder=mask><input type=number value='${Number(b.min_rssi ?? -90)}' title='minimum RSSI'><button class=danger>Remove</button>`;let q=d.querySelectorAll('input,select');q[1].value=b.type;q[0].onchange=x=>b.label=x.target.value;q[1].onchange=x=>b.type=+x.target.value;q[2].onchange=x=>b.value=x.target.value;q[3].onchange=x=>b.mask=x.target.value;q[4].onchange=x=>b.min_rssi=+x.target.value;d.querySelector('button').onclick=()=>{cfg.ble_devices.splice(i,1);renderBle()};e.appendChild(d)})}"
 "async function startScan(){await api('/api/v1/ble/scan',{method:'POST'});$('scanstate').textContent='Scanning…';setTimeout(loadScan,3000)}"
 "async function loadScan(){let a=await api('/api/v1/ble/scan');$('scanresults').innerHTML=a.map(x=>`<div class=row><code>${esc(x.address)}</code> ${esc(x.name||'(unnamed)')} ${Number(x.rssi)} dBm ${x.address_may_rotate?'<small class=bad>Private address may rotate; use stable advertisement data</small>':''}<button data-a='${esc(x.address)}' data-n='${esc(x.name||x.address)}'>Add</button></div>`).join('');$('scanresults').querySelectorAll('button').forEach(b=>b.onclick=()=>{cfg.ble_devices.push({enabled:true,type:0,label:b.dataset.n,value:b.dataset.a,mask:'',min_rssi:-90});renderBle()});if(a.length){$('scanstate').textContent=`${a.length} found`;setTimeout(loadScan,3000)}}"
+"async function scanI2c(){let sda=Number($('psusda').value),scl=Number($('psuscl').value),button=$('i2cscanbutton');if(!$('psusda').value||!$('psuscl').value||!Number.isInteger(sda)||!Number.isInteger(scl)||sda<0||scl<0||sda===scl){$('i2cscanstate').textContent='Enter distinct SDA and SCL GPIOs';return}button.disabled=true;$('i2cscanstate').textContent='Scanning…';$('i2cscanresults').textContent='';try{let result=await api('/api/v1/i2c/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sda_gpio:sda,scl_gpio:scl})});let addresses=result.addresses;$('i2cscanstate').textContent=addresses.length?`${addresses.length} device${addresses.length===1?'':'s'} found`:'No devices found';for(let address of addresses){let row=document.createElement('div');row.className='row';let code=document.createElement('code');code.textContent=`0x${address.toString(16).toUpperCase().padStart(2,'0')} (${address})`;row.appendChild(code);if(address>=88&&address<=95){let use=document.createElement('button');use.textContent='Use as PIC address';use.onclick=()=>{$('psuaddress').value=address;$('i2cscanstate').textContent=`Selected ${code.textContent}; save and reboot to apply`};row.appendChild(use)}$('i2cscanresults').appendChild(row)}}catch(e){$('i2cscanstate').textContent=e.message||String(e)}finally{button.disabled=false}}"
 "async function load(){cfg=await api('/api/v1/config');$('radio').value=cfg.radio_profile;$('hostname').value=cfg.hostname;$('ssid').value=cfg.wifi_ssid;$('zbchannel').value=cfg.zigbee_channel;$('zbmanufacturer').value=cfg.zigbee_manufacturer;$('zbmodel').value=cfg.zigbee_model;$('bleinterval').value=cfg.ble_scan_interval_ms;$('blewindow').value=cfg.ble_scan_window_ms;$('bleabsent').value=cfg.ble_absent_ms;$('advanced').checked=cfg.advanced_gpio_override;$('pson').value=cfg.pins.ps_on.gpio;$('pbtn').value=cfg.pins.power_button.gpio;$('sense').value=cfg.pins.power_sense.gpio;$('led').value=cfg.pins.status_led.gpio;$('psonactive').checked=cfg.pins.ps_on.active_high;$('pbtnactive').checked=cfg.pins.power_button.active_high;$('senseactive').checked=cfg.pins.power_sense.active_high;$('ledactive').checked=cfg.pins.status_led.active_high;$('strategy').value=cfg.timing.strategy;$('delay').value=cfg.timing.inter_output_delay_ms;$('pulse').value=cfg.timing.button_pulse_ms;$('handoff').value=cfg.timing.handoff_delay_ms;$('starttimeout').value=cfg.timing.start_timeout_ms;$('stoptimeout').value=cfg.timing.shutdown_timeout_ms;$('forcehold').value=cfg.timing.force_off_ms;$('cooldown').value=cfg.timing.retry_cooldown_ms;$('senseon').value=cfg.sense_on_ms;$('senseoff').value=cfg.sense_off_ms;$('psuenabled').checked=cfg.psu_i2c.enabled;$('psusda').value=cfg.psu_i2c.sda_gpio;$('psuscl').value=cfg.psu_i2c.scl_gpio;$('psuaddress').value=cfg.psu_i2c.address;$('psupoll').value=cfg.psu_i2c.poll_interval_ms;renderButtons();renderBle()}"
 "async function save(){cfg.configured=true;cfg.radio_profile=$('radio').value;cfg.hostname=$('hostname').value;cfg.wifi_ssid=$('ssid').value;cfg.wifi_password=$('wpass').value;cfg.admin_password=$('admin').value;cfg.zigbee_channel=+$('zbchannel').value;cfg.zigbee_manufacturer=$('zbmanufacturer').value;cfg.zigbee_model=$('zbmodel').value;cfg.ble_scan_interval_ms=+$('bleinterval').value;cfg.ble_scan_window_ms=+$('blewindow').value;cfg.ble_absent_ms=+$('bleabsent').value;cfg.advanced_gpio_override=$('advanced').checked;cfg.pins.ps_on.gpio=+$('pson').value;cfg.pins.power_button.gpio=+$('pbtn').value;cfg.pins.power_sense.gpio=+$('sense').value;cfg.pins.status_led.gpio=+$('led').value;cfg.pins.ps_on.active_high=$('psonactive').checked;cfg.pins.power_button.active_high=$('pbtnactive').checked;cfg.pins.power_sense.active_high=$('senseactive').checked;cfg.pins.status_led.active_high=$('ledactive').checked;cfg.timing.strategy=+$('strategy').value;cfg.timing.inter_output_delay_ms=+$('delay').value;cfg.timing.button_pulse_ms=+$('pulse').value;cfg.timing.handoff_delay_ms=+$('handoff').value;cfg.timing.start_timeout_ms=+$('starttimeout').value;cfg.timing.shutdown_timeout_ms=+$('stoptimeout').value;cfg.timing.force_off_ms=+$('forcehold').value;cfg.timing.retry_cooldown_ms=+$('cooldown').value;cfg.sense_on_ms=+$('senseon').value;cfg.sense_off_ms=+$('senseoff').value;cfg.psu_i2c.enabled=$('psuenabled').checked;cfg.psu_i2c.sda_gpio=+$('psusda').value;cfg.psu_i2c.scl_gpio=+$('psuscl').value;cfg.psu_i2c.address=+$('psuaddress').value;cfg.psu_i2c.poll_interval_ms=+$('psupoll').value;try{await api('/api/v1/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});msg('Saved. Rebooting…')}catch(e){msg(e,true)}}"
 "load().catch(e=>msg(e,true));status();setInterval(status,3000);let events=new EventSource('/api/v1/events');events.addEventListener('status',()=>status());</script></body></html>";
@@ -280,6 +284,71 @@ static esp_err_t ble_scan_get_handler(httpd_req_t *request)
     return err;
 }
 
+static esp_err_t i2c_scan_handler(httpd_req_t *request)
+{
+    if (!require_auth(request)) return ESP_OK;
+    char *body = NULL;
+    if (receive_body(request, &body, 128) != ESP_OK) {
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid I2C scan request");
+        return ESP_FAIL;
+    }
+    cJSON *json = cJSON_Parse(body);
+    free(body);
+    cJSON *sda = json ? cJSON_GetObjectItemCaseSensitive(json, "sda_gpio") : NULL;
+    cJSON *scl = json ? cJSON_GetObjectItemCaseSensitive(json, "scl_gpio") : NULL;
+    bool valid = cJSON_IsNumber(sda) && cJSON_IsNumber(scl) &&
+                 sda->valuedouble == sda->valueint && scl->valuedouble == scl->valueint &&
+                 sda->valueint >= 0 && sda->valueint <= 31 &&
+                 scl->valueint >= 0 && scl->valueint <= 31;
+    int sda_gpio = valid ? sda->valueint : -1;
+    int scl_gpio = valid ? scl->valueint : -1;
+    cJSON_Delete(json);
+    if (!valid) {
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "SDA and SCL must be GPIO numbers from 0 to 31");
+        return ESP_FAIL;
+    }
+
+    char error[160];
+    if (bc250_config_validate_i2c_pins(bc250_config_get(), sda_gpio, scl_gpio,
+                                       error, sizeof(error)) != ESP_OK) {
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, error);
+        return ESP_FAIL;
+    }
+
+    uint8_t addresses[BC250_I2C_MAX_SCAN_ADDRESSES];
+    size_t count = 0;
+    esp_err_t err = bc250_i2c_service_scan(sda_gpio, scl_gpio, addresses, sizeof(addresses), &count);
+    if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(request, "409 Conflict");
+        return httpd_resp_sendstr(request, "The active I2C bus uses different GPIOs or is unavailable");
+    }
+    if (err != ESP_OK) {
+        httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
+                            err == ESP_ERR_TIMEOUT ? "I2C bus timed out; check wiring and pull-ups" : esp_err_to_name(err));
+        return ESP_FAIL;
+    }
+    cJSON *response = cJSON_CreateObject();
+    cJSON *found = response ? cJSON_AddArrayToObject(response, "addresses") : NULL;
+    if (found != NULL) {
+        for (size_t i = 0; i < count; ++i) {
+            cJSON *address = cJSON_CreateNumber(addresses[i]);
+            if (address == NULL) break;
+            cJSON_AddItemToArray(found, address);
+        }
+    }
+    char *output = found && (size_t)cJSON_GetArraySize(found) == count ?
+                   cJSON_PrintUnformatted(response) : NULL;
+    cJSON_Delete(response);
+    if (output == NULL) {
+        httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(request, "application/json");
+    err = httpd_resp_sendstr(request, output);
+    cJSON_free(output);
+    return err;
+}
+
 static esp_err_t zigbee_handler(httpd_req_t *request)
 {
     if (!require_auth(request)) return ESP_OK;
@@ -424,7 +493,7 @@ esp_err_t bc250_web_server_start(void)
 {
     if (s_server != NULL) return ESP_OK;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 16;
+    config.max_uri_handlers = 17;
     config.stack_size = 8192;
     config.lru_purge_enable = true;
     ESP_RETURN_ON_ERROR(httpd_start(&s_server, &config), TAG, "HTTP server start");
@@ -436,6 +505,7 @@ esp_err_t bc250_web_server_start(void)
         {.uri = "/api/v1/config", .method = HTTP_PUT, .handler = config_put_handler},
         {.uri = "/api/v1/ble/scan", .method = HTTP_POST, .handler = ble_scan_post_handler},
         {.uri = "/api/v1/ble/scan", .method = HTTP_GET, .handler = ble_scan_get_handler},
+        {.uri = "/api/v1/i2c/scan", .method = HTTP_POST, .handler = i2c_scan_handler},
         {.uri = "/api/v1/zigbee", .method = HTTP_POST, .handler = zigbee_handler},
         {.uri = "/api/v1/factory-reset", .method = HTTP_POST, .handler = factory_reset_handler},
         {.uri = "/api/v1/events", .method = HTTP_GET, .handler = events_handler},

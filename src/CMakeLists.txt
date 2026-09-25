@@ -6,6 +6,7 @@ idf_component_register(
         "button_service.c"
         "config_store.c"
         "gpio_service.c"
+        "i2c_service.c"
         "ota_service.c"
         "power_service.c"
         "psu_i2c_service.c"

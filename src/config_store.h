@@ -117,6 +117,8 @@ const bc250_config_t *bc250_config_get(void);
 bool bc250_config_recovery_required(void);
 void bc250_config_defaults(bc250_config_t *config);
 esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_t error_size);
+esp_err_t bc250_config_validate_i2c_pins(const bc250_config_t *config, int sda_gpio,
+                                         int scl_gpio, char *error, size_t error_size);
 esp_err_t bc250_config_save_pending(const bc250_config_t *config);
 esp_err_t bc250_config_mark_healthy(void);
 esp_err_t bc250_config_factory_reset(void);
