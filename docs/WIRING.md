@@ -51,6 +51,8 @@ Drive a third optocoupler LED from the BC-250 power-LED signal. Measure the actu
 
 Confirm the result against the optocoupler forward voltage, CTR, resistor power rating, and the BC-250 LED driver. Add reverse-voltage protection across the optocoupler LED.
 
+As an alternative power-on sense point on the BC-250, use **TPMS1 pin 9 (+3 V/status)** as the signal and **pin 17 (GND)** as its return. Connect pin 9 through a **1 kΩ series resistor** to the optocoupler LED anode, and connect the LED cathode to pin 17. Do not connect the optocoupler LED directly across the header. Verify the pin voltage and that it changes with BC-250 power state before wiring; confirm the resistor against the optocoupler's forward voltage and LED current rating. The 1 kΩ value is a starting point for this nominal 3 V signal; check the resulting LED current for the selected optocoupler.
+
 On the ESP side, connect the transistor collector to the configured GPIO with a pull-up to 3.3 V and the emitter to ESP ground. The common arrangement is therefore active-low. Firmware defaults to a 500 ms on filter and a 2 s off filter, allowing a blinking source LED to continue indicating powered state.
 
 ## Local buttons and status LED
