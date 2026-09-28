@@ -17,6 +17,7 @@ idf_component_register(
         "status_led.c"
         "web_server.c"
         "wifi_service.c"
+        "zigbee_runtime.c"
         "zigbee_service.c"
         "core/ble_match.c"
         "core/button_logic.c"

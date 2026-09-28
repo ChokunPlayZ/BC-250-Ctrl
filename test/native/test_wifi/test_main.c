@@ -1,9 +1,12 @@
 #include <assert.h>
 #include "mock_idf.h"
 #include "wifi_service.h"
+#include "zigbee_service.h"
 
 static int mode, connect_calls, web_calls, dns_tasks, expiry_tasks;
 static bool driver_started, fail_start, fail_task, led_config_mode, query_error;
+static bool zigbee_paused, fail_pause, fail_mode, fail_ap_config;
+static int pause_calls, resume_calls;
 static unsigned clients, stop_failures, delays;
 static TickType_t ticks, elapsed;
 static event_handler_t wifi_handler;
@@ -26,6 +29,10 @@ esp_err_t esp_event_handler_register(esp_event_base_t base, int32_t id, event_ha
 }
 esp_err_t esp_wifi_set_mode(int next)
 {
+    if (next == WIFI_MODE_AP) {
+        assert(zigbee_paused);
+        if (fail_mode) { fail_mode = false; return ESP_ERR_INVALID_STATE; }
+    }
     if (mode == WIFI_MODE_STA && next == WIFI_MODE_AP) {
         wifi_handler(NULL, WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, NULL);
     }
@@ -34,6 +41,9 @@ esp_err_t esp_wifi_set_mode(int next)
 }
 esp_err_t esp_wifi_set_config(int interface, const wifi_config_t *config)
 {
+    if (interface == WIFI_IF_AP && fail_ap_config) {
+        fail_ap_config = false; return ESP_ERR_INVALID_STATE;
+    }
     if (interface == WIFI_IF_AP) ap_config = *config;
     else sta_config = *config;
     return ESP_OK;
@@ -44,6 +54,7 @@ esp_err_t esp_wifi_get_mac(int interface, uint8_t *mac)
 }
 esp_err_t esp_wifi_start(void)
 {
+    if (mode == WIFI_MODE_AP) assert(zigbee_paused);
     if (fail_start) { fail_start = false; return ESP_ERR_INVALID_STATE; }
     assert(!driver_started); driver_started = true; return ESP_OK;
 }
@@ -60,6 +71,18 @@ esp_err_t esp_wifi_ap_get_sta_list(wifi_sta_list_t *list)
     return ESP_OK;
 }
 esp_err_t bc250_web_server_start(void) { ++web_calls; return ESP_OK; }
+esp_err_t bc250_zigbee_set_config_ap_active(bool active)
+{
+    if (active) {
+        ++pause_calls;
+        if (fail_pause) { fail_pause = false; return ESP_ERR_INVALID_STATE; }
+    } else {
+        ++resume_calls;
+        assert(!driver_started || mode != WIFI_MODE_AP);
+    }
+    zigbee_paused = active;
+    return ESP_OK;
+}
 void bc250_status_led_set_config_mode(bool active) { led_config_mode = active; }
 TickType_t xTaskGetTickCount(void) { return ticks; }
 int xTaskCreate(TaskFunction_t function, const char *name, unsigned stack, void *arg, unsigned priority, void *handle)
@@ -104,28 +127,40 @@ int main(int argc, char **argv)
 {
     assert(argc == 2); scenario = argv[1];
     bool zigbee = strstr(scenario, "zigbee") != NULL || !strcmp(scenario, "retry") ||
-                  !strcmp(scenario, "task_failure") || !strcmp(scenario, "stale");
+                  !strcmp(scenario, "task_failure") || !strcmp(scenario, "stale") ||
+                  !strcmp(scenario, "pause_failure") || !strcmp(scenario, "mode_failure") ||
+                  !strcmp(scenario, "config_failure");
     bool first = !strcmp(scenario, "first_boot");
     bool recovery = strstr(scenario, "recovery") || strstr(scenario, "expiry");
-    bool hybrid = strstr(scenario, "hybrid") != NULL;
     bc250_config_t config = {.configured = !first, .radio_profile = zigbee ? BC250_RADIO_ZIGBEE :
-                            hybrid ? BC250_RADIO_HYBRID : BC250_RADIO_WIFI};
+                            BC250_RADIO_WIFI};
     strcpy(config.wifi_ssid, "test-network"); strcpy(config.wifi_password, "test-password");
     if (!strcmp(scenario, "wrap")) ticks = UINT32_MAX - 150000;
     assert(bc250_wifi_service_start(&config, recovery) == ESP_OK);
     int previous_connects = connect_calls;
+    if (!strcmp(scenario, "pause_failure") || !strcmp(scenario, "mode_failure") ||
+        !strcmp(scenario, "config_failure") || !strcmp(scenario, "config_failure_wifi")) {
+        fail_pause = !strcmp(scenario, "pause_failure");
+        fail_mode = !strcmp(scenario, "mode_failure");
+        fail_ap_config = !strncmp(scenario, "config_failure", 14);
+        assert(bc250_wifi_open_setup_ap() != ESP_OK);
+        assert(!bc250_wifi_is_config_ap() && !led_config_mode && !zigbee_paused);
+        assert(driver_started == !zigbee);
+        previous_connects = connect_calls;
+    }
     if (!strcmp(scenario, "retry")) {
         fail_start = true;
         assert(bc250_wifi_open_setup_ap() != ESP_OK);
-        assert(!bc250_wifi_is_config_ap() && !led_config_mode);
+        assert(!bc250_wifi_is_config_ap() && !led_config_mode && !zigbee_paused);
     }
     if (!strcmp(scenario, "task_failure")) {
         fail_task = true;
         assert(bc250_wifi_open_setup_ap() == ESP_ERR_NO_MEM);
-        assert(!bc250_wifi_is_config_ap() && !led_config_mode && !driver_started);
+        assert(!bc250_wifi_is_config_ap() && !led_config_mode && !driver_started && !zigbee_paused);
     }
     assert(bc250_wifi_open_setup_ap() == ESP_OK);
     assert(bc250_wifi_is_config_ap() && driver_started && mode == WIFI_MODE_AP && led_config_mode);
+    assert(zigbee_paused && pause_calls > 0);
     assert(!strcmp(bc250_wifi_ip_address(), "192.168.4.1"));
     assert(!strcmp((char *)ap_config.ap.ssid, "BC250-Ctrl-ABCD"));
     assert(ap_config.ap.authmode == WIFI_AUTH_OPEN && ap_config.ap.max_connection == 4);
@@ -134,6 +169,8 @@ int main(int argc, char **argv)
     int previous_web_calls = web_calls;
     assert(bc250_wifi_open_setup_ap() == ESP_OK);
     assert(web_calls == previous_web_calls + 1 && expiry_tasks == 1);
+    int previous_pauses = pause_calls;
+    assert(bc250_wifi_open_config_ap() == ESP_OK && pause_calls == previous_pauses);
     if (!strcmp(scenario, "stale")) {
         TaskFunction_t old_expire = expire; void *old_arg = expire_arg;
         assert(bc250_wifi_close_config_ap() == ESP_OK);
@@ -161,6 +198,7 @@ int main(int argc, char **argv)
         assert(elapsed == expected);
     }
     assert(!bc250_wifi_is_config_ap() && !led_config_mode && !bc250_wifi_is_connected());
+    assert(!zigbee_paused && resume_calls > 0);
     assert(!strcmp(bc250_wifi_ip_address(), "0.0.0.0"));
     if (zigbee || first) assert(!driver_started);
     else {

@@ -14,6 +14,8 @@ PROFILES = {
     "esp32c5_8mb": ("esp32c5", "sdkconfig_8mb.defaults"),
     "esp32c6_4mb": ("esp32c6", "sdkconfig_4mb.defaults"),
     "esp32c6_8mb": ("esp32c6", "sdkconfig_8mb.defaults"),
+    "esp32c5_4mb_recovery": ("esp32c5", "sdkconfig_4mb.defaults"),
+    "esp32c5_8mb_recovery": ("esp32c5", "sdkconfig_8mb.defaults"),
 }
 
 
@@ -75,12 +77,14 @@ def main() -> int:
         return 127
 
     target, profile_defaults = PROFILES[profile]
+    recovery = profile.endswith("_recovery")
+    project_dir = PROJECT_ROOT / "recovery" if recovery else PROJECT_ROOT
     build_dir = PROJECT_ROOT / "build" / profile
     sdkconfig = build_dir / "sdkconfig"
     migrate_coredump_stack(sdkconfig)
-    defaults = f"sdkconfig.defaults;{profile_defaults}"
-    if target == "esp32c5":
-        defaults += ";sdkconfig_c5_usb.defaults"
+    defaults = f"{project_dir / 'sdkconfig.defaults'};{project_dir / profile_defaults}"
+    if target == "esp32c5" and not recovery:
+        defaults += f";{PROJECT_ROOT / 'sdkconfig_c5_usb.defaults'}"
         migrate_c5_console(sdkconfig)
     actions = sys.argv[2:] or ["build"]
 
@@ -93,7 +97,7 @@ def main() -> int:
         f"-DSDKCONFIG_DEFAULTS={defaults}",
         *actions,
     ]
-    return subprocess.run(command, cwd=PROJECT_ROOT, check=False).returncode
+    return subprocess.run(command, cwd=project_dir, check=False).returncode
 
 
 if __name__ == "__main__":

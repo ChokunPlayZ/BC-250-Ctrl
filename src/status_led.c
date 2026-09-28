@@ -8,6 +8,7 @@
 
 static bc250_output_config_t s_led;
 static volatile bool s_config_mode;
+static volatile bool s_zigbee_joining;
 static bool s_zigbee_mode;
 
 static bool led_pattern(bc250_power_state_t state, uint32_t slot)
@@ -17,6 +18,8 @@ static bool led_pattern(bc250_power_state_t state, uint32_t slot)
         if (s_zigbee_mode) return (slot % 16) < 8;
         return slot % 20 == 0 || slot % 20 == 2;
     }
+    /* Two short flashes every second while network steering is active. */
+    if (s_zigbee_mode && s_zigbee_joining) return slot % 8 == 0 || slot % 8 == 2;
     switch (state) {
     case BC250_POWER_ON: return true;
     case BC250_POWER_STARTING: return (slot % 4) < 2;
@@ -44,6 +47,7 @@ esp_err_t bc250_status_led_start(const bc250_config_t *config)
     s_led = config->status_led;
     s_zigbee_mode = config->radio_profile == BC250_RADIO_ZIGBEE;
     s_config_mode = false;
+    s_zigbee_joining = false;
     ESP_RETURN_ON_ERROR(bc250_gpio_init_output(&s_led), "status_led", "LED GPIO");
     bc250_gpio_write(&s_led, false);
     return xTaskCreate(led_task, "status_led", 2048, NULL, 2, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
@@ -52,4 +56,9 @@ esp_err_t bc250_status_led_start(const bc250_config_t *config)
 void bc250_status_led_set_config_mode(bool active)
 {
     s_config_mode = active;
+}
+
+void bc250_status_led_set_zigbee_joining(bool active)
+{
+    s_zigbee_joining = active;
 }

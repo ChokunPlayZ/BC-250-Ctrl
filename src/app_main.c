@@ -49,8 +49,7 @@ static void healthy_task(void *arg)
     s_rapid_reset.count = 0;
     const bc250_config_t *config = bc250_config_get();
     bool station_required = config->configured &&
-                            (config->radio_profile == BC250_RADIO_WIFI ||
-                             config->radio_profile == BC250_RADIO_HYBRID);
+                            config->radio_profile == BC250_RADIO_WIFI;
     if (s_boot_config_valid && (!station_required || bc250_wifi_is_connected())) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_config_mark_healthy());
     } else {
@@ -166,10 +165,11 @@ void app_main(void)
     }
 
     if (config_valid) ESP_ERROR_CHECK(bc250_ble_presence_start(config));
+    /* Decide AP mode before starting the Zigbee router on the shared radio. */
+    ESP_ERROR_CHECK(bc250_wifi_service_start(config, force_ap));
     if (config_valid && config->configured) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_zigbee_service_start(config));
     }
-    ESP_ERROR_CHECK(bc250_wifi_service_start(config, force_ap));
 
     ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_serial_service_start());
 

@@ -16,7 +16,7 @@ typedef struct {
     const char *const *choices;
 } field_t;
 
-static const char *const profiles[] = {"wifi", "zigbee", "hybrid", NULL};
+static const char *const profiles[] = {"wifi", "zigbee", NULL};
 static const char *const strategies[] = {"ps_on_only", "button_only", "ps_on_then_button", "simultaneous", NULL};
 static const char *const actions[] = {"none", "on", "off", "toggle", "force_off", "config_ap",
                                      "zigbee_commission", "zigbee_reset", NULL};
@@ -31,7 +31,7 @@ static const char *const matchers[] = {"address", "name_exact", "name_prefix", "
 #define TIMING(member) ROOT(timing.member, U32, 0, UINT32_MAX)
 static const field_t root_fields[] = {
     ROOT(configured, BOOL, 0, 1), ROOT(advanced_gpio_override, BOOL, 0, 1),
-    FIELD(bc250_config_t, "radio_profile", radio_profile, ENUM, 0, BC250_RADIO_HYBRID, profiles),
+    FIELD(bc250_config_t, "radio_profile", radio_profile, ENUM, 0, BC250_RADIO_ZIGBEE, profiles),
     STRING(hostname), STRING(wifi_ssid), STRING(wifi_password),
     {"admin_password", 0, PASSWORD, 8, 64, NULL},
     ROOT(sense_on_ms, U16, 1, UINT16_MAX), ROOT(sense_off_ms, U16, 1, UINT16_MAX),

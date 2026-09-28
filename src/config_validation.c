@@ -6,6 +6,13 @@
 #include "sdkconfig.h"
 #endif
 
+bool bc250_config_migrate_legacy_profile(bc250_config_t *config)
+{
+    if (config == NULL || config->radio_profile != BC250_RADIO_LEGACY_HYBRID) return false;
+    config->radio_profile = BC250_RADIO_ZIGBEE;
+    return true;
+}
+
 static bool pin_in_use(const bc250_config_t *config, int gpio, int except_button)
 {
     if (gpio < 0) return false;
@@ -38,12 +45,29 @@ bool bc250_config_pin_is_safe(int gpio)
     return false;
 }
 
+bool bc250_config_pin_is_blocked(int gpio)
+{
+#if CONFIG_IDF_TARGET_ESP32C5
+    /* NodeMCU ESP32-C5 Mini boot failures; GPIO14 also carries native USB. */
+    return gpio == 12 || gpio == 14;
+#else
+    (void)gpio;
+    return false;
+#endif
+}
+
 static esp_err_t validate_one_pin(int gpio,
                                   const char *name, char *error, size_t error_size)
 {
     if (gpio == BC250_GPIO_DISABLED) return ESP_OK;
     if (gpio < 0 || gpio > 31) {
         snprintf(error, error_size, "%s GPIO is outside the supported range", name);
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (bc250_config_pin_is_blocked(gpio)) {
+        snprintf(error, error_size,
+                 "%s GPIO %d is unavailable on ESP32-C5: NodeMCU C5 Mini boot failure",
+                 name, gpio);
         return ESP_ERR_INVALID_ARG;
     }
     return ESP_OK;
@@ -80,7 +104,7 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         snprintf(error, error_size, "unsupported configuration schema");
         return ESP_ERR_INVALID_VERSION;
     }
-    if (config->radio_profile > BC250_RADIO_HYBRID) {
+    if (config->radio_profile != BC250_RADIO_WIFI && config->radio_profile != BC250_RADIO_ZIGBEE) {
         snprintf(error, error_size, "invalid radio profile");
         return ESP_ERR_INVALID_ARG;
     }
@@ -104,8 +128,7 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
             snprintf(error, error_size, "power-button GPIO is required for shutdown");
             return ESP_ERR_INVALID_ARG;
         }
-        if ((config->radio_profile == BC250_RADIO_WIFI ||
-             config->radio_profile == BC250_RADIO_HYBRID) && config->wifi_ssid[0] == '\0') {
+        if (config->radio_profile == BC250_RADIO_WIFI && config->wifi_ssid[0] == '\0') {
             snprintf(error, error_size, "Wi-Fi SSID is required for this radio profile");
             return ESP_ERR_INVALID_ARG;
         }
@@ -211,7 +234,8 @@ bool bc250_config_pin_warnings(const bc250_config_t *config, char *warning, size
     }
     size_t used = 0;
     for (int gpio = 0; gpio <= 31; ++gpio) {
-        if (!(pins & (UINT32_C(1) << gpio)) || bc250_config_pin_is_safe(gpio)) continue;
+        if (!(pins & (UINT32_C(1) << gpio)) || bc250_config_pin_is_safe(gpio) ||
+            bc250_config_pin_is_blocked(gpio)) continue;
         int written = snprintf(warning + used, size - used, "%s%d", used ? ", " : "GPIOs ", gpio);
         if (written < 0 || (size_t)written >= size - used) return true;
         used += written;

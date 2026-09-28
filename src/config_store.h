@@ -19,7 +19,7 @@ extern "C" {
 typedef enum {
     BC250_RADIO_WIFI = 0,
     BC250_RADIO_ZIGBEE,
-    BC250_RADIO_HYBRID,
+    BC250_RADIO_LEGACY_HYBRID, /* Stored value only; migrated to Zigbee on load. */
 } bc250_radio_profile_t;
 
 typedef enum {
@@ -84,7 +84,7 @@ typedef struct {
     uint32_t schema_version;
     uint32_t crc32;
     bool configured;
-    bool advanced_gpio_override; /* Legacy field retained for NVS/API compatibility; GPIO guidance is advisory. */
+    bool advanced_gpio_override; /* Legacy field; cannot bypass blocked GPIOs. */
     bc250_radio_profile_t radio_profile;
     char hostname[32];
     char wifi_ssid[33];
@@ -121,10 +121,13 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
 esp_err_t bc250_config_validate_i2c_pins(const bc250_config_t *config, int sda_gpio,
                                          int scl_gpio, char *error, size_t error_size);
 esp_err_t bc250_config_save_pending(const bc250_config_t *config);
+bool bc250_config_migrate_legacy_profile(bc250_config_t *config);
 esp_err_t bc250_config_mark_healthy(void);
 esp_err_t bc250_config_factory_reset(void);
 /* Conservative board guidance only; it never gates configuration saves. */
 bool bc250_config_pin_is_safe(int gpio);
+/* Hard exclusions applied to every GPIO role and I2C scan, including old saved settings. */
+bool bc250_config_pin_is_blocked(int gpio);
 bool bc250_config_pin_warnings(const bc250_config_t *config, char *warning, size_t size);
 bool bc250_config_password_verify(const char *password);
 void bc250_config_set_admin_password(bc250_config_t *config, const char *password);

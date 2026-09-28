@@ -7,4 +7,4 @@
 
 esp_err_t bc250_status_led_start(const bc250_config_t *config);
 void bc250_status_led_set_config_mode(bool active);
-
+void bc250_status_led_set_zigbee_joining(bool active);

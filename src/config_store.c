@@ -68,7 +68,13 @@ static esp_err_t read_blob(nvs_handle_t handle, const char *key, bc250_config_t 
     if (err != ESP_OK) {
         return err;
     }
-    if (size == sizeof(*config) && config_blob_valid(config)) return ESP_OK;
+    if (size == sizeof(*config) && config_blob_valid(config)) {
+        if (bc250_config_migrate_legacy_profile(config)) {
+            ESP_LOGW(TAG, "Saved Wi-Fi + Zigbee profile migrated to Zigbee-only");
+            finalize_config(config);
+        }
+        return ESP_OK;
+    }
     // Version 1 ended at the Zigbee model, with tail padding up to the next 4-byte boundary.
     if (size == offsetof(bc250_config_t, psu_i2c) && config->schema_version == 1) {
         uint32_t saved_crc = config->crc32;
@@ -77,6 +83,7 @@ static esp_err_t read_blob(nvs_handle_t handle, const char *key, bc250_config_t 
         config->crc32 = saved_crc;
         if (valid) {
             psu_i2c_defaults(&config->psu_i2c);
+            bc250_config_migrate_legacy_profile(config);
             finalize_config(config);
             return ESP_OK;
         }
@@ -360,7 +367,6 @@ const char *bc250_radio_profile_name(bc250_radio_profile_t profile)
     switch (profile) {
     case BC250_RADIO_WIFI: return "wifi";
     case BC250_RADIO_ZIGBEE: return "zigbee";
-    case BC250_RADIO_HYBRID: return "hybrid";
     default: return "invalid";
     }
 }
@@ -391,8 +397,10 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddStringToObject(root, "wifi_password", include_secrets ? config->wifi_password : "");
     cJSON_AddBoolToObject(root, "advanced_gpio_override", config->advanced_gpio_override);
     cJSON *recommended = cJSON_AddArrayToObject(root, "recommended_gpios");
+    cJSON *blocked = cJSON_AddArrayToObject(root, "blocked_gpios");
     for (int gpio = 0; gpio <= 31; ++gpio) {
         if (bc250_config_pin_is_safe(gpio)) cJSON_AddItemToArray(recommended, cJSON_CreateNumber(gpio));
+        if (bc250_config_pin_is_blocked(gpio)) cJSON_AddItemToArray(blocked, cJSON_CreateNumber(gpio));
     }
     cJSON_AddNumberToObject(root, "sense_on_ms", config->sense_on_ms);
     cJSON_AddNumberToObject(root, "sense_off_ms", config->sense_off_ms);
@@ -462,13 +470,6 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     return json;
 }
 
-static bc250_radio_profile_t parse_profile(const char *value)
-{
-    if (value && strcmp(value, "zigbee") == 0) return BC250_RADIO_ZIGBEE;
-    if (value && strcmp(value, "hybrid") == 0) return BC250_RADIO_HYBRID;
-    return BC250_RADIO_WIFI;
-}
-
 static bc250_button_action_t parse_action(const char *value)
 {
     for (int i = 0; i <= BC250_BUTTON_ACTION_ZIGBEE_RESET; ++i) {
@@ -520,7 +521,17 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     item = cJSON_GetObjectItemCaseSensitive(root, "advanced_gpio_override");
     if (cJSON_IsBool(item)) config->advanced_gpio_override = cJSON_IsTrue(item);
     item = cJSON_GetObjectItemCaseSensitive(root, "radio_profile");
-    if (cJSON_IsString(item)) config->radio_profile = parse_profile(item->valuestring);
+    if (item != NULL) {
+        if (cJSON_IsString(item) && strcmp(item->valuestring, "wifi") == 0) {
+            config->radio_profile = BC250_RADIO_WIFI;
+        } else if (cJSON_IsString(item) && strcmp(item->valuestring, "zigbee") == 0) {
+            config->radio_profile = BC250_RADIO_ZIGBEE;
+        } else {
+            snprintf(error, error_size, "radio_profile must be wifi or zigbee");
+            cJSON_Delete(root);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
     item = cJSON_GetObjectItemCaseSensitive(root, "hostname");
     if (cJSON_IsString(item)) strlcpy(config->hostname, item->valuestring, sizeof(config->hostname));
     item = cJSON_GetObjectItemCaseSensitive(root, "wifi_ssid");

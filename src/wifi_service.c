@@ -13,6 +13,7 @@
 #include "lwip/sockets.h"
 #include "status_led.h"
 #include "web_server.h"
+#include "zigbee_service.h"
 
 static const char *TAG = "wifi";
 #define CONFIG_AP_IDLE_MS (5U * 60U * 1000U)
@@ -144,12 +145,15 @@ static esp_err_t start_ap(void)
     if (s_ap_netif == NULL) s_ap_netif = esp_netif_create_default_wifi_ap();
     if (s_ap_netif == NULL) return ESP_ERR_NO_MEM;
     bool already_open = s_config_ap;
+    /* Stop and deinitialize the router before Wi-Fi starts accepting clients. */
+    ESP_RETURN_ON_ERROR(bc250_zigbee_set_config_ap_active(true), TAG, "pause Zigbee for AP");
     /* Recovery is AP-only so station-side clients cannot bypass portal auth. */
     /* Suppress station reconnects during the mode transition. */
     s_config_ap = true;
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
     if (err != ESP_OK) {
         s_config_ap = already_open;
+        if (!already_open) ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_zigbee_set_config_ap_active(false));
         return err;
     }
     s_connected = false;
@@ -190,7 +194,13 @@ static esp_err_t start_ap(void)
     return bc250_web_server_start();
 
 ap_failed:
-    s_config_ap = already_open;
+    if (!already_open && s_wifi_started) {
+        /* A running station may already have changed to AP before config failed. */
+        ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_wifi_close_config_ap());
+    } else {
+        s_config_ap = already_open;
+        if (!already_open) ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_zigbee_set_config_ap_active(false));
+    }
     return err;
 }
 
@@ -222,8 +232,7 @@ esp_err_t bc250_wifi_service_start(const bc250_config_t *config, bool force_conf
 {
     if (config == NULL) return ESP_ERR_INVALID_ARG;
     s_config = *config;
-    bool wants_station = config->radio_profile == BC250_RADIO_WIFI ||
-                         config->radio_profile == BC250_RADIO_HYBRID;
+    bool wants_station = config->radio_profile == BC250_RADIO_WIFI;
     if (force_config_ap || !config->configured || (wants_station && config->wifi_ssid[0] == '\0')) {
         return start_ap();
     }
@@ -257,9 +266,10 @@ esp_err_t bc250_wifi_close_config_ap(void)
     bc250_status_led_set_config_mode(false);
     strlcpy(s_ip, "0.0.0.0", sizeof(s_ip));
     bool wants_station = s_config.configured && s_config.wifi_ssid[0] != '\0' &&
-                         (s_config.radio_profile == BC250_RADIO_WIFI ||
-                          s_config.radio_profile == BC250_RADIO_HYBRID);
-    return wants_station ? start_station() : ESP_OK;
+                         s_config.radio_profile == BC250_RADIO_WIFI;
+    esp_err_t err = wants_station ? start_station() : ESP_OK;
+    esp_err_t zigbee_err = bc250_zigbee_set_config_ap_active(false);
+    return err != ESP_OK ? err : zigbee_err;
 }
 
 bool bc250_wifi_is_config_ap(void)

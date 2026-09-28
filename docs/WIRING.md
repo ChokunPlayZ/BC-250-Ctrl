@@ -1,5 +1,7 @@
 # Wiring and installation
 
+On the NodeMCU ESP32-C5 Mini, do not assign GPIO 12 or 14: saved assignments have been reported to prevent booting. Both are blocked in every C5 firmware profile, including I²C scans. If settings already prevent startup, use the [recovery image](RECOVERY.md) and move the signals to other pins.
+
 ## Required parts
 
 - ESP32-C5 or ESP32-C6 development board with adequate exposed GPIOs
@@ -90,8 +92,11 @@ If you need active-low wiring, connect `ESP 3.3 V ── resistor ── LED ano
 | On | Solid |
 | Stopping | Slow blink |
 | Fault | Repeating triple flash |
+| Zigbee joining | Two quick flashes every second until joining succeeds, fails, or stops |
 | Configuration AP in Zigbee-only mode | Repeating pulse: one second on, one second off, until the AP closes or the controller reboots |
-| Configuration AP in Wi-Fi/hybrid mode | Repeating double pulse |
+| Configuration AP in Wi-Fi mode | Repeating double pulse |
+
+Configuration AP patterns take precedence over joining; the joining pattern takes precedence over power-state patterns. After joining ends, the normal power-state pattern returns. Joining automatically on a factory-new Zigbee network and joining through serial or a local button use the same indication.
 
 ## Optional HP Common Slot PSU I²C
 

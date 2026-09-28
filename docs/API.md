@@ -1,6 +1,6 @@
 # Local HTTP API
 
-The API is available in Wi-Fi and hybrid operation. It is also available on the open configuration AP, which requires neither a Wi-Fi password nor HTTP Basic authentication. Normal station-mode requests use HTTP Basic authentication with username `admin`.
+The API is available in Wi-Fi operation. It is also available on the open configuration AP, which requires neither a Wi-Fi password nor HTTP Basic authentication. Normal station-mode requests use HTTP Basic authentication with username `admin`.
 
 All configuration responses redact the Wi-Fi password and password hash. Sending an empty `wifi_password` preserves the current credential.
 
@@ -12,7 +12,7 @@ Returns firmware version, authoritative power state, sensed state, output activi
 
 ### `POST /api/v1/wifi/ap/close`
 
-Closes the active setup/recovery AP without saving configuration or rebooting. Returns `202 Accepted` before disconnecting clients. Wi-Fi/hybrid devices resume their saved Wi-Fi station connection; Zigbee-only and unconfigured devices stop Wi-Fi. Returns `409 Conflict` if the AP is already off. All APs also close automatically after five minutes without any connected Wi-Fi clients; a connected client keeps the AP open, and the idle period restarts when the last client leaves.
+Closes the active setup/recovery AP without saving configuration or rebooting. Returns `202 Accepted` before disconnecting clients. Wi-Fi devices resume their saved Wi-Fi station connection; Zigbee-only devices stop Wi-Fi and resume the Zigbee router with its saved pairing. Unconfigured devices stop Wi-Fi. Returns `409 Conflict` if the AP is already off. All APs also close automatically after five minutes without any connected Wi-Fi clients; a connected client keeps the AP open, and the idle period restarts when the last client leaves.
 
 ### `POST /api/v1/power`
 
@@ -24,11 +24,11 @@ Supported actions are `on`, `off`, `toggle`, and `force_off`. The response ackno
 
 ### `GET /api/v1/config`
 
-Returns the complete non-secret configuration used by the setup UI, plus `recommended_gpios` for advisory board guidance. Pins outside that list are allowed without an override. The legacy `advanced_gpio_override` field remains accepted for compatibility and no longer gates pins.
+Returns the complete non-secret configuration used by the setup UI, plus `recommended_gpios` for advisory board guidance and `blocked_gpios` for hard exclusions (`[12,14]` on C5, `[]` on C6). Pins outside the recommended list are allowed without an override unless blocked. The legacy `advanced_gpio_override` field remains accepted for compatibility and cannot bypass blocked pins.
 
 ### `PUT /api/v1/config`
 
-Applies a partial JSON patch, validates GPIO ranges, required pins, conflicts, and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds. `psu_i2c` accepts `enabled`, `sda_gpio`, `scl_gpio`, `address` (decimal 88–95 for `0x58`–`0x5F`), and `poll_interval_ms` (500–60000). It is disabled by default.
+Applies a partial JSON patch, validates GPIO ranges, blocked pins, required pins, conflicts, and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds. `psu_i2c` accepts `enabled`, `sda_gpio`, `scl_gpio`, `address` (decimal 88–95 for `0x58`–`0x5F`), and `poll_interval_ms` (500–60000). It is disabled by default. `radio_profile` accepts only `wifi` or `zigbee`; the removed `hybrid` value and other invalid profiles return `400 Bad Request`.
 
 ### `POST /api/v1/ble/scan`
 
@@ -40,7 +40,7 @@ Returns recent discovery results with address, address type, name, and RSSI.
 
 ### `POST /api/v1/i2c/scan`
 
-Scans 7-bit I²C addresses `0x08`–`0x77` on the supplied SDA/SCL pins and returns decimal addresses. The pins must pass the same GPIO range and conflict checks as PSU configuration; board guidance is advisory. If the PSU monitor is already running, the request must use its active pins. The scan does not change saved settings.
+Scans 7-bit I²C addresses `0x08`–`0x77` on the supplied SDA/SCL pins and returns decimal addresses. The pins must pass the same GPIO range, blocked-pin, and conflict checks as PSU configuration; board guidance is advisory. If the PSU monitor is already running, the request must use its active pins. The scan does not change saved settings.
 
 ```json
 {"sda_gpio":4,"scl_gpio":5}
@@ -54,7 +54,7 @@ Streams server-sent `status` events when the state or optocoupled sense changes,
 
 ### `POST /api/v1/zigbee`
 
-Send `{"action":"commission"}` to start network steering or `{"action":"reset"}` to erase only Zigbee network state.
+This endpoint returns `409 Conflict` when Zigbee is unavailable. Zigbee is paused throughout setup AP sessions, and Wi-Fi-only mode does not run Zigbee. Use serial `zigbee commission` or `zigbee reset` after closing the AP for manual joining or resetting only Zigbee network state.
 
 ### Zigbee PSU telemetry
 

@@ -43,12 +43,16 @@ Settings saved. Rebooting...
 
 `config get` and `config show` are aliases for `config`. `config set <setting> <value>`, `config save`, and `config discard` are also supported. Command names and setting values are case sensitive. Leading/trailing spaces and repeated spaces between arguments are accepted. Each command is limited to 512 characters.
 
+The radio profile accepts `wifi` or `zigbee`. `wifi ap` pauses Zigbee while the AP is open; closing the AP from the portal or allowing it to expire resumes Zigbee without erasing its pairing. Run `zigbee commission` and `zigbee reset` with the AP closed.
+
+The shell prints `Zigbee: joining network. Enable permit-join on your coordinator.` when joining actually starts, including automatic joining on a factory-new network and joining from a local button. It prints the result when joining succeeds or fails, or `Zigbee: joining stopped.` if the stack is paused, reset, or leaves the network during an attempt. These messages appear even with `logs off`. The `status` command shows `Zigbee: joining` while an attempt is active. A configured status LED flashes twice every second during the attempt; after a failure, enable permit-join and run `zigbee commission` to retry.
+
 ## Editing settings
 
 Enter `config` to see setting names and values; Tab completes editable names after `set `. Quote values containing spaces with single or double quotes. Backslash escapes a character outside single quotes. Shell expansion is not performed, so `$` is literal. Boolean values accept `on`/`off`, `true`/`false`, `yes`/`no`, or `1`/`0`. Numbers are decimal, with explicit `0x` hexadecimal also accepted. Use `-1` to disable a GPIO.
 
 ```text
-set radio hybrid
+set radio wifi
 set wifi_ssid "My Wi-Fi"
 set wifi_password "my network password"
 set admin_password "my new admin password"
@@ -85,7 +89,7 @@ set ble_devices.0.enabled on
 
 Button actions are `none`, `on`, `off`, `toggle`, `force_off`, `config_ap`, `zigbee_commission`, and `zigbee_reset`. BLE matcher types are `address`, `name_exact`, `name_prefix`, `service_uuid`, and `manufacturer_data`. `config` shows fields for slots included by the current counts. Unused slots remain available through Tab completion.
 
-Edits remain in memory until `save`; `bc250*>` marks unsaved changes. Each successful edit reports current configuration errors and GPIO advisories immediately. You can still edit several related fields, including swapping GPIO roles, before saving. GPIO guidance is warning-only; no advanced override is needed. `save` checks required pins, duplicate assignments, numeric ranges, and configuration consistency, stages the result, and reboots. Invalid settings leave edits available for correction. Saved changes follow the existing 30-second health check and rollback process. During first setup, set `configured on` after supplying the required pins and radio settings. `status`, scans, and power commands always use the running configuration until reboot.
+Edits remain in memory until `save`; `bc250*>` marks unsaved changes. Each successful edit reports current configuration errors and GPIO advisories immediately. You can still edit several related fields, including swapping GPIO roles, before saving. GPIO guidance is warning-only except GPIO 12 and 14 on C5, which are blocked because of NodeMCU C5 Mini boot failures. The legacy override cannot bypass these exclusions. `save` checks blocked and required pins, duplicate assignments, numeric ranges, and configuration consistency, stages the result, and reboots. Invalid settings leave edits available for correction. Saved changes follow the existing 30-second health check and rollback process. During first setup, set `configured on` after supplying the required pins and radio settings. `status`, scans, and power commands always use the running configuration until reboot.
 
 `admin reset` takes effect immediately, updates both active and pending configuration, and refreshes the password hash in unsaved shell edits. Neither pending rollback nor a later shell save restores the old password. The setup AP stays open without a Wi-Fi password.
 

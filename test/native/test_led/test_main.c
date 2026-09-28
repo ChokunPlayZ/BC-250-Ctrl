@@ -41,6 +41,15 @@ int main(void)
 {
     bc250_config_t config = {.radio_profile = BC250_RADIO_ZIGBEE, .status_led = {.gpio = 6, .active_high = true}};
     assert(bc250_status_led_start(&config) == ESP_OK);
+    bc250_status_led_set_zigbee_joining(true);
+    const bc250_power_state_t states[] = {BC250_POWER_OFF, BC250_POWER_ON, BC250_POWER_STARTING,
+                                         BC250_POWER_STOPPING, BC250_POWER_FAULT, BC250_POWER_UNKNOWN};
+    for (unsigned state = 0; state < sizeof(states) / sizeof(states[0]); ++state) {
+        power_state = states[state];
+        sample(32);
+        for (unsigned i = 0; i < 32; ++i) assert(samples[i] == (i % 8 == 0 || i % 8 == 2));
+    }
+    /* The configuration AP indication takes precedence over joining. */
     bc250_status_led_set_config_mode(true);
     power_state = BC250_POWER_ON;
     sample(32);
@@ -49,18 +58,26 @@ int main(void)
     sample(32);
     for (unsigned i = 0; i < 32; ++i) assert(samples[i] == (i % 16 < 8));
     bc250_status_led_set_config_mode(false);
+    sample(32);
+    for (unsigned i = 0; i < 32; ++i) assert(samples[i] == (i % 8 == 0 || i % 8 == 2));
+    bc250_status_led_set_zigbee_joining(false);
+    sample(40);
+    for (unsigned i = 0; i < 40; ++i) assert(samples[i] == (i % 20 == 0 || i % 20 == 2 || i % 20 == 4));
     power_state = BC250_POWER_ON; sample(16);
     for (unsigned i = 0; i < 16; ++i) assert(samples[i]);
     power_state = BC250_POWER_OFF; sample(16);
     for (unsigned i = 0; i < 16; ++i) assert(!samples[i]);
     bc250_status_led_set_config_mode(true);
-    assert(bc250_status_led_start(&config) == ESP_OK); /* Boot resets the AP indication. */
+    bc250_status_led_set_zigbee_joining(true);
+    assert(bc250_status_led_start(&config) == ESP_OK); /* Boot resets both indications. */
     sample(16);
     for (unsigned i = 0; i < 16; ++i) assert(!samples[i]);
     config.radio_profile = BC250_RADIO_WIFI;
     assert(bc250_status_led_start(&config) == ESP_OK);
+    bc250_status_led_set_zigbee_joining(true); sample(16);
+    for (unsigned i = 0; i < 16; ++i) assert(!samples[i]);
     bc250_status_led_set_config_mode(true); sample(40);
     for (unsigned i = 0; i < 40; ++i) assert(samples[i] == (i % 20 == 0 || i % 20 == 2));
-    puts("Zigbee AP pulse, AP close, reboot and Wi-Fi LED patterns passed");
+    puts("Zigbee joining, AP priority, power-state restoration, reboot and Wi-Fi LED patterns passed");
     return 0;
 }

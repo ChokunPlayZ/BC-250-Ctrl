@@ -72,8 +72,9 @@ static void test_settings(void)
     assert(!strcmp(config.wifi_password, "secret \\ $ ' \""));
     set(&config, "wifi_password", "");
     assert(!*config.wifi_password);
-    set(&config, "radio", "hybrid");
-    assert(config.radio_profile == BC250_RADIO_HYBRID);
+    set(&config, "radio", "zigbee");
+    assert(config.radio_profile == BC250_RADIO_ZIGBEE);
+    reject(&config, "radio", "hybrid");
     set(&config, "timing.strategy", "button_only");
     assert(config.timing.strategy == BC250_START_BUTTON_ONLY);
     set(&config, "configured", "yes");

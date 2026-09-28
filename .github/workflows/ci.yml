@@ -8,6 +8,7 @@ on:
       - 'partitions*.csv'
       - 'sdkconfig*.defaults'
       - 'src/**'
+      - 'recovery/**'
       - 'test/native/**'
       - 'tools/**'
   pull_request:
@@ -17,6 +18,7 @@ on:
       - 'partitions*.csv'
       - 'sdkconfig*.defaults'
       - 'src/**'
+      - 'recovery/**'
       - 'test/native/**'
       - 'tools/**'
 
@@ -61,3 +63,20 @@ jobs:
           path: .
           command: python tools/idf_build.py ${{ matrix.profile }} build
       - run: python tools/check_image_size.py ${{ matrix.partitions }} build/${{ matrix.profile }}/bc250_ctrl.bin
+      - name: Build C5 recovery image
+        if: matrix.target == 'esp32c5'
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf }}
+          target: ${{ matrix.target }}
+          path: .
+          command: python tools/idf_build.py ${{ matrix.profile }}_recovery build merge-bin -o bc250_recovery-full.bin
+      - name: Check recovery image size
+        if: matrix.target == 'esp32c5'
+        run: python tools/check_image_size.py ${{ matrix.partitions }} build/${{ matrix.profile }}_recovery/bc250_recovery.bin
+      - name: Upload C5 recovery image
+        if: matrix.target == 'esp32c5'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.profile }}_recovery
+          path: build/${{ matrix.profile }}_recovery/bc250_recovery-full.bin

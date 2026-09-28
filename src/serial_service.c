@@ -97,7 +97,7 @@ static void print_help(void)
          "Examples:\n"
          "  set hostname bc250-lab\n"
          "  set wifi_ssid \"My Wi-Fi\"\n"
-         "  set radio hybrid\n"
+         "  set radio zigbee\n"
          "  set ps_on.gpio 4\n"
          "  set psu_i2c.address 0x5f\n"
          "  save\n\n"
@@ -116,7 +116,8 @@ static void print_status(void)
     printf("Wi-Fi:         %s\n", bc250_wifi_is_connected() ? "connected" : "disconnected");
     printf("IP address:    %s\n", bc250_wifi_ip_address());
     printf("Setup AP:      %s\n", bc250_wifi_is_config_ap() ? "open at http://192.168.4.1/" : "closed");
-    printf("Zigbee:        %s\n", bc250_zigbee_is_joined() ? "joined" :
+    printf("Zigbee:        %s\n", bc250_zigbee_is_joining() ? "joining" :
+           bc250_zigbee_is_joined() ? "joined" :
            bc250_zigbee_is_started() ? "not joined" : "disabled");
 #ifdef CONFIG_BC250_OTA_ENABLED
     puts("OTA:           available");
@@ -265,7 +266,7 @@ static void handle_command(char *line)
     } else if (argc == 2 && !strcmp(command, "ble") && !strcmp(argv[1], "results")) print_ble_results();
     else if (argc == 4 && !strcmp(command, "i2c") && !strcmp(argv[1], "scan")) scan_i2c(argv[2], argv[3]);
     else if (argc == 2 && !strcmp(command, "zigbee") && !strcmp(argv[1], "commission")) {
-        reply_result(bc250_zigbee_commission(), "Zigbee joining started.");
+        reply_result(bc250_zigbee_commission(), "Zigbee joining request queued.");
     } else if (argc == 2 && !strcmp(command, "zigbee") && !strcmp(argv[1], "reset")) {
         reply_result(bc250_zigbee_factory_reset(), "Zigbee network reset.");
     } else if (argc == 2 && !strcmp(command, "wifi") && !strcmp(argv[1], "ap")) {

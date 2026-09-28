@@ -1,6 +1,7 @@
 #include "zigbee_service.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "app_events.h"
@@ -12,6 +13,8 @@
 #include "freertos/task.h"
 #include "power_service.h"
 #include "psu_i2c_service.h"
+#include "status_led.h"
+#include "zigbee_runtime.h"
 
 #define BC250_ZIGBEE_ENDPOINT 1
 #define BC250_ZIGBEE_STORAGE_PARTITION "nvs"
@@ -23,6 +26,7 @@ static bc250_config_t s_config;
 static uint8_t s_manufacturer[34];
 static uint8_t s_model[34];
 static volatile bool s_started;
+static volatile bool s_joining;
 static volatile bool s_joined;
 static bool s_internal_attribute_update;
 static bool s_psu_was_available;
@@ -37,10 +41,38 @@ static void make_zcl_string(const char *source, uint8_t output[34])
     memcpy(&output[1], source, length);
 }
 
+static void set_joining(bool active)
+{
+    s_joining = active;
+    bc250_status_led_set_zigbee_joining(active);
+}
+
+static void stop_joining(void)
+{
+    if (s_joining) {
+        puts("Zigbee: joining stopped.");
+        fflush(stdout);
+    }
+    set_joining(false);
+}
+
 static void commission_cb(void *arg)
 {
     (void)arg;
-    ezb_bdb_start_top_level_commissioning(EZB_BDB_MODE_NETWORK_STEERING);
+    if (s_joining) {
+        puts("Zigbee: joining is already in progress.");
+        fflush(stdout);
+        return;
+    }
+    set_joining(true);
+    puts("Zigbee: joining network. Enable permit-join on your coordinator.");
+    fflush(stdout);
+    ezb_err_t err = ezb_bdb_start_top_level_commissioning(EZB_BDB_MODE_NETWORK_STEERING);
+    if (err != EZB_ERR_NONE) {
+        set_joining(false);
+        printf("Zigbee: could not start joining (error %d). Run zigbee commission to retry.\n", err);
+        fflush(stdout);
+    }
 }
 
 static bool signal_handler(const ezb_app_signal_t *signal)
@@ -67,13 +99,18 @@ static bool signal_handler(const ezb_app_signal_t *signal)
     }
     case EZB_BDB_SIGNAL_STEERING: {
         ezb_bdb_comm_status_t status = *(ezb_bdb_comm_status_t *)ezb_app_signal_get_params(signal);
+        set_joining(false);
         s_joined = status == EZB_BDB_STATUS_SUCCESS;
         s_psu_last_report_us = 0;
-        ESP_LOGI(TAG, "Network steering %s", s_joined ? "complete" : "failed");
+        if (s_joined) puts("Zigbee: joined network.");
+        else printf("Zigbee: joining failed (status %u). Enable permit-join on your coordinator, "
+                    "then run zigbee commission to retry.\n", (unsigned)status);
+        fflush(stdout);
         if (s_joined) bc250_zigbee_update_psu_status();
         break;
     }
     case EZB_ZDO_SIGNAL_LEAVE:
+        stop_joining();
         s_joined = false;
         s_psu_last_report_us = 0;
         break;
@@ -168,9 +205,8 @@ static esp_err_t create_device(void)
     return ESP_OK;
 }
 
-static void zigbee_task(void *arg)
+static void zigbee_setup(void)
 {
-    (void)arg;
     esp_zigbee_config_t config = {
         .device_config = {
             .device_type = EZB_NWK_DEVICE_TYPE_ROUTER,
@@ -192,11 +228,16 @@ static void zigbee_task(void *arg)
     ESP_ERROR_CHECK(ezb_app_signal_add_handler(signal_handler));
     ESP_ERROR_CHECK(create_device());
     ESP_ERROR_CHECK(esp_zigbee_start(false));
-    esp_zigbee_launch_mainloop();
-    esp_zigbee_deinit();
+}
+
+static void zigbee_teardown(void)
+{
+    stop_joining();
     s_started = false;
     s_joined = false;
-    vTaskDelete(NULL);
+    ESP_ERROR_CHECK(esp_zigbee_deinit());
+    s_psu_was_available = false;
+    s_psu_last_report_us = 0;
 }
 
 esp_err_t bc250_zigbee_service_start(const bc250_config_t *config)
@@ -204,7 +245,12 @@ esp_err_t bc250_zigbee_service_start(const bc250_config_t *config)
     if (config == NULL) return ESP_ERR_INVALID_ARG;
     if (config->radio_profile == BC250_RADIO_WIFI) return ESP_OK;
     s_config = *config;
-    return xTaskCreate(zigbee_task, "Zigbee_main", 6144, NULL, 5, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+    return bc250_zigbee_runtime_start(zigbee_setup, zigbee_teardown);
+}
+
+esp_err_t bc250_zigbee_set_config_ap_active(bool active)
+{
+    return bc250_zigbee_runtime_set_paused(active);
 }
 
 esp_err_t bc250_zigbee_commission(void)
@@ -215,6 +261,7 @@ esp_err_t bc250_zigbee_commission(void)
 static void reset_cb(void *arg)
 {
     (void)arg;
+    stop_joining();
     esp_zigbee_factory_reset();
 }
 
@@ -328,6 +375,11 @@ void bc250_zigbee_update_psu_status(void)
 bool bc250_zigbee_is_started(void)
 {
     return s_started;
+}
+
+bool bc250_zigbee_is_joining(void)
+{
+    return s_joining;
 }
 
 bool bc250_zigbee_is_joined(void)
