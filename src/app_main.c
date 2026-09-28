@@ -151,6 +151,10 @@ void app_main(void)
     char validation_error[160];
     bool config_valid = bc250_config_validate(config, validation_error, sizeof(validation_error)) == ESP_OK;
     s_boot_config_valid = config_valid;
+    char pin_warning[192];
+    if (bc250_config_pin_warnings(config, pin_warning, sizeof(pin_warning))) {
+        ESP_LOGW(TAG, "%s", pin_warning);
+    }
     if (!config_valid) {
         ESP_LOGE(TAG, "Configuration invalid; outputs remain disabled: %s", validation_error);
         force_ap = true;

@@ -90,7 +90,8 @@ If you need active-low wiring, connect `ESP 3.3 V ── resistor ── LED ano
 | On | Solid |
 | Stopping | Slow blink |
 | Fault | Repeating triple flash |
-| Configuration AP | Repeating double pulse |
+| Configuration AP in Zigbee-only mode | Repeating pulse: one second on, one second off, until the AP closes or the controller reboots |
+| Configuration AP in Wi-Fi/hybrid mode | Repeating double pulse |
 
 ## Optional HP Common Slot PSU I²C
 

@@ -23,7 +23,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 
 ### Wi-Fi and web interface
 
-- Provides a browser-based setup and control interface stored entirely in the firmware.
+- Provides a mobile-friendly browser interface stored entirely in the firmware, with large touch controls, collapsible settings, inline validation, and a fixed Save and reboot bar.
 - Offers a local REST API and live power-state updates for integrations.
 - Opens an interactive serial shell with readable status, command history, Tab completion, and simple settings commands such as `set hostname bc250-lab` and `save`.
 - Supports Wi-Fi-only, Zigbee-only, and combined Wi-Fi/Zigbee operation. BLE scanning remains available in every profile.
@@ -77,19 +77,19 @@ You can pass any normal `idf.py` action or option after the profile. For example
 6. For Wi-Fi or hybrid mode, configure a WPA2-or-stronger network; open, WEP, and WPA-only networks are not supported.
 7. Save. The new configuration is staged and applied after reboot. After 30 seconds it becomes active if validation succeeds and any required Wi-Fi station is connected. This check does not validate Zigbee, BLE, power sense, or external hardware.
 
-Setup and recovery APs are open networks, including on devices with settings saved by older firmware. All UI and API endpoints bypass HTTP Basic authentication while the setup AP is active. Anyone in range can join the AP, issue control and configuration commands and, on 8 MB builds, upload firmware. A configured device's recovery AP expires after 15 minutes; first-boot provisioning stays open until configured. In normal Wi-Fi operation, sign in as user `admin` with the configured password. If configuration becomes inaccessible, reset the ESP32 three times consecutively without allowing either of the first two boots to run for 30 seconds.
+Setup and recovery APs are open networks, including on devices with settings saved by older firmware. All UI and API endpoints bypass HTTP Basic authentication while the setup AP is active. Anyone in range can join the AP, issue control and configuration commands and, on 8 MB builds, upload firmware. Every setup and recovery AP closes after five minutes with no connected Wi-Fi clients, including first boot and the serial `wifi ap` command. It stays open while any client is connected, and a fresh five-minute grace period starts when the last client disconnects. The serial `wifi ap` command opens the same setup AP in every radio profile and refreshes the grace period when it is already open. You can also turn it off from the web interface. Closing the AP restores the configured Wi-Fi station in Wi-Fi/hybrid mode; Zigbee-only and unconfigured devices stop Wi-Fi. In Zigbee-only mode, the status LED pulses for one second on and one second off throughout the AP session, then returns to its normal power-state pattern. In normal Wi-Fi operation, sign in as user `admin` with the configured password. If configuration becomes inaccessible, reset the ESP32 three times consecutively without allowing either of the first two boots to run for 30 seconds.
 The web interface can reset just the Zigbee network, or perform a full factory reset from the configuration AP; the latter also erases controller settings and returns to first-boot provisioning. The [serial command interface](docs/SERIAL.md) is also available without Wi-Fi and can generate a new admin password without erasing settings.
 
 The local web service uses HTTP, so Basic-auth credentials are visible to anyone who can inspect traffic on that network. Keep it on a trusted LAN and never port-forward it. CRC protects configuration integrity, not confidentiality: Wi-Fi credentials are stored in NVS, and flash encryption is not enabled by default. Secure Boot is also not enabled; the default OTA build checks image integrity but does not require a cryptographic signature.
 
 ## GPIO guidance
 
-The conservative allowlists are:
+The conservative GPIO guidance lists are:
 
 - ESP32-C5: GPIO 0, 1, 4, 5, 6, 8, 9, 10, 23, 24
 - ESP32-C6: GPIO 0, 1, 2, 3, 6, 7, 10, 11, 18, 19, 20, 21, 22, 23
 
-These are a firmware guardrail, not a replacement for the exact dev-board schematic. Check the [C5 DevKitC pin restrictions](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html) or [C6 GPIO restrictions](https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c6/api-reference/peripherals/gpio.html) against your module: some otherwise valid SoC pins are routed to flash, USB, LEDs, or different headers. Advanced override is available only for intentional, reviewed installations.
+These lists provide advisory guidance; verify every GPIO against the exact dev-board schematic. Check the [C5 DevKitC pin restrictions](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html) or [C6 GPIO restrictions](https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c6/api-reference/peripherals/gpio.html) against your module: some otherwise valid SoC pins are routed to flash, USB, LEDs, or different headers. Pins outside these conservative lists produce advisory warnings and can be saved without an override. Invalid GPIO values, duplicate role assignments, and missing required pins still prevent saving. The web interface validates inputs as you edit and displays errors beside the affected fields.
 
 See [docs/WIRING.md](docs/WIRING.md) before connecting the BC-250 and [docs/API.md](docs/API.md) for local integrations.
 

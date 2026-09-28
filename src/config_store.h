@@ -84,7 +84,7 @@ typedef struct {
     uint32_t schema_version;
     uint32_t crc32;
     bool configured;
-    bool advanced_gpio_override;
+    bool advanced_gpio_override; /* Legacy field retained for NVS/API compatibility; GPIO guidance is advisory. */
     bc250_radio_profile_t radio_profile;
     char hostname[32];
     char wifi_ssid[33];
@@ -123,7 +123,9 @@ esp_err_t bc250_config_validate_i2c_pins(const bc250_config_t *config, int sda_g
 esp_err_t bc250_config_save_pending(const bc250_config_t *config);
 esp_err_t bc250_config_mark_healthy(void);
 esp_err_t bc250_config_factory_reset(void);
+/* Conservative board guidance only; it never gates configuration saves. */
 bool bc250_config_pin_is_safe(int gpio);
+bool bc250_config_pin_warnings(const bc250_config_t *config, char *warning, size_t size);
 bool bc250_config_password_verify(const char *password);
 void bc250_config_set_admin_password(bc250_config_t *config, const char *password);
 /* Generates and persists a new admin password; output is populated only on success. */

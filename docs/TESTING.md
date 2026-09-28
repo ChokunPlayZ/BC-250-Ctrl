@@ -2,7 +2,7 @@
 
 ## Automated checks
 
-- Run native state-machine, BLE matcher, shell parsing, and typed settings tests.
+- Run native state-machine, BLE matcher, shell parsing, typed settings, GPIO advisory, and Wi-Fi mode/client inactivity tests, and status LED pattern tests.
 - Build C5/C6 in both 4 MB and 8 MB layouts.
 - Confirm each application fits its selected partition.
 - Review compiler warnings and check that generated configuration files are not committed.
@@ -23,14 +23,17 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Join the setup and recovery APs without a password, including after upgrading a device with an older saved provisioning password; verify the portal opens at `http://192.168.4.1/`.
 - Verify configuration saving and promotion after 30 seconds stay within the serial, HTTP, and health-check task stacks, including with all BLE matcher slots populated.
 - Trigger a controlled panic in a test image and verify the core dump saves successfully using its reserved stack.
-- Reject duplicate, reserved, USB, flash, and strapping pins without advanced override.
+- Reject duplicate, out-of-range, and missing required pins. Verify reserved, USB, flash, strapping, and other GPIOs outside the conservative guidance display warnings and save without an override.
+- Edit web inputs without leaving the field: verify blank/fractional/out-of-range numbers, missing required GPIOs or SSIDs, duplicate roles, short admin passwords, and dependent timing errors appear immediately and clear when corrected. GPIO advisories must leave Save enabled when all other fields are valid.
 - Exercise short, double, and long press actions on every configured button.
 - Save a valid pending configuration and verify promotion after 30 seconds.
 - Force repeated boot failure and verify rollback to the previous active configuration and recovery AP.
 - Corrupt the NVS blob and verify safe defaults with all external roles disabled.
 - Verify triple-reset recovery without configured buttons.
 - Verify factory reset separately from Zigbee network reset.
-- Exercise serial status/configuration queries, power commands, BLE/I²C scans, Zigbee commands, and the setup AP command in each radio profile.
+- Exercise serial status/configuration queries, power commands, BLE/I²C scans, and Zigbee commands in each radio profile. Run `wifi ap` from Wi-Fi station, Zigbee-only, hybrid, unconfigured, and recovery AP states; verify the first-setup SSID, open authentication, captive DNS, and portal at `http://192.168.4.1/`, including after repeated commands. Leave each AP without connected clients for five minutes and verify it closes. Keep a client connected for more than 15 minutes and verify it remains open; disconnect the last client and verify a fresh five-minute grace period. Repeat with multiple clients, reconnect just before expiry, and verify Wi-Fi/hybrid station restoration and Zigbee-only Wi-Fi shutdown.
+- In Zigbee-only mode with a configured status LED, open the AP and verify a repeating one-second-on/one-second-off pulse, even while power is on or faulted. Close the AP manually, let it time out, or reboot and verify the normal power-state LED pattern returns.
+- Test the web UI at 320, 390, and 430 px phone widths and desktop width: no horizontal scrolling, visible field labels, large touch controls, collapsible settings, and an accessible fixed Save and reboot bar. Verify changing profiles shows the matching radio fields; hidden-section errors show a count and Show inputs to fix opens/focuses the first invalid field. Add/edit/remove physical buttons and BLE controllers, exercise I²C/BLE scans, and verify the saved request preserves values. Confirm Force off asks before executing, setup AP closure acknowledges before disconnecting, and unavailable factory reset/OTA controls follow device status.
 - Reset the admin password over serial during an active pending configuration, verify immediate web login with the new password, then force rollback and verify the new password still works.
 - Verify serial oversized commands are rejected and the next command still succeeds.
 - Verify the `bc250>` prompt, echo, cursor editing, backspace/delete, Up/Down history, Tab completion, and Ctrl+C cancellation in an ANSI terminal; verify echo, backspace, and cancellation in a basic terminal.

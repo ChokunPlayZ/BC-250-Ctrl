@@ -205,7 +205,15 @@ static void edit_setting(const char *key, const char *value)
     }
     char error[160];
     if (bc250_serial_config_set(s_edit, key, value, error, sizeof(error)) != ESP_OK) reply_error(error);
-    else { s_dirty = true; puts("Setting updated. Enter save to apply, or discard to undo."); }
+    else {
+        s_dirty = true;
+        puts("Setting updated. Enter save to apply, or discard to undo.");
+        if (bc250_config_validate(s_edit, error, sizeof(error)) != ESP_OK) {
+            printf("Before saving: %s\n", error);
+        }
+        char warning[192];
+        if (bc250_config_pin_warnings(s_edit, warning, sizeof(warning))) printf("Warning: %s\n", warning);
+    }
 }
 
 static void save_config(void)
@@ -261,7 +269,7 @@ static void handle_command(char *line)
     } else if (argc == 2 && !strcmp(command, "zigbee") && !strcmp(argv[1], "reset")) {
         reply_result(bc250_zigbee_factory_reset(), "Zigbee network reset.");
     } else if (argc == 2 && !strcmp(command, "wifi") && !strcmp(argv[1], "ap")) {
-        reply_result(bc250_wifi_open_config_ap(), "Setup AP opened. Visit http://192.168.4.1/");
+        reply_result(bc250_wifi_open_setup_ap(), "Setup AP opened. Visit http://192.168.4.1/");
     } else if (argc == 2 && !strcmp(command, "admin") && !strcmp(argv[1], "reset")) {
         char password[17];
         esp_err_t err = bc250_config_reset_admin_password(password);

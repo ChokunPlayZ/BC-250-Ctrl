@@ -5,6 +5,7 @@ idf_component_register(
         "ble_presence.c"
         "button_service.c"
         "config_store.c"
+        "config_validation.c"
         "gpio_service.c"
         "i2c_service.c"
         "ota_service.c"
@@ -26,6 +27,7 @@ idf_component_register(
     INCLUDE_DIRS
         "."
         "core"
+    EMBED_TXTFILES "web_ui.html"
     REQUIRES
         app_update
         bt

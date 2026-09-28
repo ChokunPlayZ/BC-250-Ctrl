@@ -34,7 +34,7 @@ Settings saved. Rebooting...
 | `ble results` | Show discovered addresses, names, address types, and RSSI |
 | `i2c scan <SDA> <SCL>` | Scan validated I²C pins; show hexadecimal and decimal addresses |
 | `zigbee commission`, `zigbee reset` | Start joining or clear only Zigbee network state |
-| `wifi ap` | Open the setup access point |
+| `wifi ap` | Open the setup AP in any radio profile; closes after five minutes with no connected clients |
 | `admin reset` | Generate, save, and display a new admin password once |
 | `factory reset ERASE ALL` | Erase all NVS data, including settings and Zigbee state, then reboot |
 | `reboot` | Restart and discard unsaved shell edits |
@@ -85,7 +85,7 @@ set ble_devices.0.enabled on
 
 Button actions are `none`, `on`, `off`, `toggle`, `force_off`, `config_ap`, `zigbee_commission`, and `zigbee_reset`. BLE matcher types are `address`, `name_exact`, `name_prefix`, `service_uuid`, and `manufacturer_data`. `config` shows fields for slots included by the current counts. Unused slots remain available through Tab completion.
 
-Edits remain in memory until `save`; `bc250*>` marks unsaved changes. You can edit several related fields before validation, including swapping GPIO roles. `save` applies the existing configuration safety checks, stages the result, and reboots. Invalid settings leave edits available for correction. Saved changes follow the existing 30-second health check and rollback process. During first setup, set `configured on` after supplying the required pins and radio settings. `status`, scans, and power commands always use the running configuration until reboot.
+Edits remain in memory until `save`; `bc250*>` marks unsaved changes. Each successful edit reports current configuration errors and GPIO advisories immediately. You can still edit several related fields, including swapping GPIO roles, before saving. GPIO guidance is warning-only; no advanced override is needed. `save` checks required pins, duplicate assignments, numeric ranges, and configuration consistency, stages the result, and reboots. Invalid settings leave edits available for correction. Saved changes follow the existing 30-second health check and rollback process. During first setup, set `configured on` after supplying the required pins and radio settings. `status`, scans, and power commands always use the running configuration until reboot.
 
 `admin reset` takes effect immediately, updates both active and pending configuration, and refreshes the password hash in unsaved shell edits. Neither pending rollback nor a later shell save restores the old password. The setup AP stays open without a Wi-Fi password.
 
