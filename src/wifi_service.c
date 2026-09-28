@@ -133,10 +133,9 @@ static esp_err_t start_ap(void)
     esp_wifi_get_mac(WIFI_IF_AP, mac);
     wifi_config_t ap = {0};
     snprintf((char *)ap.ap.ssid, sizeof(ap.ap.ssid), "BC250-Ctrl-%02X%02X", mac[4], mac[5]);
-    strlcpy((char *)ap.ap.password, s_config.ap_password, sizeof(ap.ap.password));
     ap.ap.ssid_len = strlen((char *)ap.ap.ssid);
     ap.ap.channel = 1;
-    ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    ap.ap.authmode = WIFI_AUTH_OPEN;
     ap.ap.max_connection = 4;
     ap.ap.pmf_cfg.required = false;
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &ap), TAG, "AP config");
@@ -153,7 +152,7 @@ static esp_err_t start_ap(void)
         xTaskCreate(ap_expiry_task, "ap_expiry", 2048,
                     (void *)(uintptr_t)s_ap_generation, 2, NULL);
     }
-    ESP_LOGI(TAG, "Configuration AP %s started", ap.ap.ssid);
+    ESP_LOGI(TAG, "Open configuration AP %s started at 192.168.4.1", ap.ap.ssid);
     return bc250_web_server_start();
 }
 

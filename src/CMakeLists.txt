@@ -10,6 +10,7 @@ idf_component_register(
         "ota_service.c"
         "power_service.c"
         "psu_i2c_service.c"
+        "serial_config.c"
         "serial_service.c"
         "status_service.c"
         "status_led.c"
@@ -21,12 +22,14 @@ idf_component_register(
         "core/power_logic.c"
         "core/presence_logic.c"
         "core/hp_commonslot_protocol.c"
+        "core/shell_args.c"
     INCLUDE_DIRS
         "."
         "core"
     REQUIRES
         app_update
         bt
+        console
         esp_event
         esp_http_server
         esp_driver_i2c

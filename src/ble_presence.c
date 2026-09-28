@@ -16,7 +16,7 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 
-#define LEARN_RESULT_COUNT 24
+#define LEARN_RESULT_COUNT BC250_BLE_SCAN_RESULT_COUNT
 
 typedef struct {
     bool used;
@@ -197,6 +197,22 @@ esp_err_t bc250_ble_start_learning(uint32_t duration_ms)
     s_learning_until_ms = now_ms() + duration_ms;
     portEXIT_CRITICAL(&s_lock);
     return ESP_OK;
+}
+
+bool bc250_ble_scan_result(unsigned index, bc250_ble_scan_result_t *result)
+{
+    if (index >= LEARN_RESULT_COUNT || result == NULL) return false;
+    portENTER_CRITICAL(&s_lock);
+    learn_result_t snapshot = s_results[index];
+    portEXIT_CRITICAL(&s_lock);
+    if (!snapshot.used) return false;
+    bc250_ble_format_address(snapshot.address, result->address);
+    memcpy(result->name, snapshot.name, sizeof(result->name));
+    result->address_type = snapshot.address_type;
+    result->rssi = snapshot.rssi;
+    result->address_may_rotate = snapshot.address_type == 1 &&
+                               (snapshot.address[5] & 0xc0) != 0xc0;
+    return true;
 }
 
 char *bc250_ble_scan_results_json(void)

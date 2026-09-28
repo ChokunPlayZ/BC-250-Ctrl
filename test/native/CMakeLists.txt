@@ -19,3 +19,13 @@ target_compile_options(bc250_core_tests PRIVATE -Wall -Wextra -Werror)
 target_include_directories(bc250_core_tests PRIVATE ../../src/core)
 
 add_test(NAME bc250_core_tests COMMAND bc250_core_tests)
+
+add_executable(bc250_shell_tests
+    test_shell/test_main.c
+    ../../src/core/shell_args.c
+    ../../src/serial_config.c
+)
+target_compile_features(bc250_shell_tests PRIVATE c_std_11)
+target_compile_options(bc250_shell_tests PRIVATE -Wall -Wextra -Werror)
+target_include_directories(bc250_shell_tests PRIVATE support ../../src ../../src/core)
+add_test(NAME bc250_shell_tests COMMAND bc250_shell_tests)

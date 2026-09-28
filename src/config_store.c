@@ -29,9 +29,14 @@ static SemaphoreHandle_t s_write_lock;
 
 static uint32_t config_crc(const bc250_config_t *config)
 {
-    bc250_config_t copy = *config;
-    copy.crc32 = 0;
-    return esp_crc32_le(0, (const uint8_t *)&copy, sizeof(copy));
+    const uint8_t *data = (const uint8_t *)config;
+    const size_t crc_offset = offsetof(bc250_config_t, crc32);
+    const size_t after_crc = crc_offset + sizeof(config->crc32);
+    const uint32_t zero = 0;
+    // Preserve the stored blob format without copying the whole configuration onto the stack.
+    uint32_t crc = esp_crc32_le(0, data, crc_offset);
+    crc = esp_crc32_le(crc, (const uint8_t *)&zero, sizeof(zero));
+    return esp_crc32_le(crc, data + after_crc, sizeof(*config) - after_crc);
 }
 
 static void psu_i2c_defaults(bc250_psu_i2c_config_t *psu)
@@ -81,9 +86,13 @@ static esp_err_t read_blob(nvs_handle_t handle, const char *key, bc250_config_t 
 
 static esp_err_t write_blob(nvs_handle_t handle, const char *key, const bc250_config_t *source)
 {
-    bc250_config_t config = *source;
-    finalize_config(&config);
-    ESP_RETURN_ON_ERROR(nvs_set_blob(handle, key, &config, sizeof(config)), TAG, "set %s", key);
+    bc250_config_t *config = malloc(sizeof(*config));
+    if (config == NULL) return ESP_ERR_NO_MEM;
+    *config = *source;
+    finalize_config(config);
+    esp_err_t err = nvs_set_blob(handle, key, config, sizeof(*config));
+    free(config);
+    ESP_RETURN_ON_ERROR(err, TAG, "set %s", key);
     return nvs_commit(handle);
 }
 
@@ -274,7 +283,7 @@ esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending)
     nvs_close(handle);
     if (first_boot != NULL) *first_boot = true;
     s_using_pending = false;
-    ESP_LOGW(TAG, "First boot provisioning password: %s", s_config.ap_password);
+    ESP_LOGW(TAG, "First boot admin password: %s", s_config.ap_password);
     return err;
 }
 

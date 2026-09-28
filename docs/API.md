@@ -1,6 +1,6 @@
 # Local HTTP API
 
-The API is available in Wi-Fi and hybrid operation. It is also available on the temporary configuration AP. Normal station-mode requests use HTTP Basic authentication with username `admin`; the AP relies on its WPA2 provisioning password.
+The API is available in Wi-Fi and hybrid operation. It is also available on the open configuration AP, which requires neither a Wi-Fi password nor HTTP Basic authentication. Normal station-mode requests use HTTP Basic authentication with username `admin`.
 
 All configuration responses redact the Wi-Fi password and password hash. Sending an empty `wifi_password` preserves the current credential.
 

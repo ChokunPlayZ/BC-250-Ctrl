@@ -25,7 +25,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 
 - Provides a browser-based setup and control interface stored entirely in the firmware.
 - Offers a local REST API and live power-state updates for integrations.
-- Accepts serial commands for status and telemetry queries, configuration, power control, scans, Zigbee, and admin password recovery.
+- Opens an interactive serial shell with readable status, command history, Tab completion, and simple settings commands such as `set hostname bc250-lab` and `save`.
 - Supports Wi-Fi-only, Zigbee-only, and combined Wi-Fi/Zigbee operation. BLE scanning remains available in every profile.
 - Exposes the web interface during Wi-Fi operation and through the temporary setup access point. Zigbee-only mode does not keep Wi-Fi running after setup.
 
@@ -69,18 +69,18 @@ You can pass any normal `idf.py` action or option after the profile. For example
 ## First setup
 
 1. Flash the correct target while all power-control GPIO roles are still disabled.
-2. Open the serial monitor. On first initialization, note the generated 12-character provisioning password. It is also the initial `admin` password and is printed once.
-3. Join `BC250-Ctrl-XXXX` using that password and open `http://192.168.4.1/`.
+2. Open the serial monitor. On first initialization, note the generated 12-character `admin` password, which is printed once and is used after joining your normal Wi-Fi network.
+3. Join the open `BC250-Ctrl-XXXX` network without a password and open `http://192.168.4.1/`.
 4. Select a radio profile, assign pins from the board’s schematic, set active polarity, and configure the power timings. Configured mode requires power-sense and power-button GPIOs; every start strategy except button-only also requires PS_ON.
 5. Add buttons and BLE controllers as needed. For the optional local button and status LED, follow the [connection diagrams and matching settings](docs/WIRING.md#local-buttons-and-status-led). Set an admin password of at least eight characters.
    For a compatible HP Common Slot PSU, assign SDA/SCL pins after checking [the wiring guide](docs/WIRING.md). The UI can scan the bus and select a detected PIC address before saving; the PIC address defaults to decimal 95 (`0x5F`). Enable PSU I²C to monitor it after reboot.
 6. For Wi-Fi or hybrid mode, configure a WPA2-or-stronger network; open, WEP, and WPA-only networks are not supported.
 7. Save. The new configuration is staged and applied after reboot. After 30 seconds it becomes active if validation succeeds and any required Wi-Fi station is connected. This check does not validate Zigbee, BLE, power sense, or external hardware.
 
-All UI and API endpoints bypass HTTP Basic authentication while the setup AP is active and rely on its WPA2 password. Anyone joined to the AP can issue control and configuration commands and, on 8 MB builds, upload firmware. A configured device's recovery AP expires after 15 minutes; first-boot provisioning stays open until configured. In normal Wi-Fi operation, sign in as user `admin` with the configured password. If configuration becomes inaccessible, reset the ESP32 three times consecutively without allowing either of the first two boots to run for 30 seconds.
+Setup and recovery APs are open networks, including on devices with settings saved by older firmware. All UI and API endpoints bypass HTTP Basic authentication while the setup AP is active. Anyone in range can join the AP, issue control and configuration commands and, on 8 MB builds, upload firmware. A configured device's recovery AP expires after 15 minutes; first-boot provisioning stays open until configured. In normal Wi-Fi operation, sign in as user `admin` with the configured password. If configuration becomes inaccessible, reset the ESP32 three times consecutively without allowing either of the first two boots to run for 30 seconds.
 The web interface can reset just the Zigbee network, or perform a full factory reset from the configuration AP; the latter also erases controller settings and returns to first-boot provisioning. The [serial command interface](docs/SERIAL.md) is also available without Wi-Fi and can generate a new admin password without erasing settings.
 
-The local web service uses HTTP, so Basic-auth credentials are visible to anyone who can inspect traffic on that network. Keep it on a trusted LAN and never port-forward it. CRC protects configuration integrity, not confidentiality: Wi-Fi/AP credentials are stored in NVS, and flash encryption is not enabled by default. Secure Boot is also not enabled; the default OTA build checks image integrity but does not require a cryptographic signature.
+The local web service uses HTTP, so Basic-auth credentials are visible to anyone who can inspect traffic on that network. Keep it on a trusted LAN and never port-forward it. CRC protects configuration integrity, not confidentiality: Wi-Fi credentials are stored in NVS, and flash encryption is not enabled by default. Secure Boot is also not enabled; the default OTA build checks image integrity but does not require a cryptographic signature.
 
 ## GPIO guidance
 

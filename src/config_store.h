@@ -89,6 +89,7 @@ typedef struct {
     char hostname[32];
     char wifi_ssid[33];
     char wifi_password[65];
+    /* Legacy provisioning secret retained for NVS compatibility and initial admin password. */
     char ap_password[17];
     uint8_t admin_salt[16];
     uint8_t admin_hash[32];

@@ -34,6 +34,19 @@ def migrate_c5_console(sdkconfig: Path) -> None:
     sdkconfig.write_text(current)
 
 
+def migrate_coredump_stack(sdkconfig: Path) -> None:
+    """Give older generated profiles a separate stack for crash reporting."""
+    if not sdkconfig.exists():
+        return
+    current = sdkconfig.read_text()
+    updated = current.replace(
+        "CONFIG_ESP_COREDUMP_STACK_SIZE=0\n",
+        "CONFIG_ESP_COREDUMP_STACK_SIZE=2048\n",
+    )
+    if updated != current:
+        sdkconfig.write_text(updated)
+
+
 def usage() -> str:
     profiles = " | ".join(PROFILES)
     return (
@@ -64,6 +77,7 @@ def main() -> int:
     target, profile_defaults = PROFILES[profile]
     build_dir = PROJECT_ROOT / "build" / profile
     sdkconfig = build_dir / "sdkconfig"
+    migrate_coredump_stack(sdkconfig)
     defaults = f"sdkconfig.defaults;{profile_defaults}"
     if target == "esp32c5":
         defaults += ";sdkconfig_c5_usb.defaults"
