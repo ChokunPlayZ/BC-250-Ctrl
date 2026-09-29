@@ -24,7 +24,11 @@
 </section>
 <section class="card" id="apnotice" hidden>
 <h2>Setup access point is on</h2><p class="intro">Stay connected while editing. The access point turns off after 5 minutes with no connected devices. Zigbee pauses until it closes. In Zigbee mode, the status LED pulses while it is on.</p>
-<button onclick="closeAp()">Turn off setup AP</button>
+<button id="closeapbutton" onclick="showApCloseConfirmation(true)">Turn off setup AP</button>
+<div id="apcloseconfirmation" role="group" aria-label="Confirm setup AP shutdown" hidden>
+<p class="warn" style="margin-top:12px">Turning off the setup access point disconnects this page. Save any changes you want to keep first.</p>
+<div class="actions"><button id="confirmcloseap" onclick="closeAp()">Turn off and disconnect</button><button id="cancelcloseap" onclick="showApCloseConfirmation(false)">Keep AP on</button></div>
+</div>
 </section>
 <h2 id="settings" class="section-title">Settings</h2><p class="intro">Open a section to make changes, then save and reboot to apply them.</p>
 <details class="card" id="networksection" open><summary>Radio &amp; network</summary><div class="content">
@@ -46,17 +50,18 @@
 <details class="card" id="otasection" hidden><summary>Firmware update</summary><div class="content"><p class="intro">Choose an application .bin for this chip and flash layout. Settings are preserved.</p><label>Firmware file<input id="firmware" type="file" accept=".bin"></label><button style="margin-top:12px" onclick="uploadFirmware()">Upload &amp; reboot</button></div></details>
 <footer class="save-dock"><div class="save-inner"><div class="save-info"><div id="validation" role="status" aria-live="polite">Loading settings…</div><small id="savehint">Changes apply after reboot.</small><button id="reviewbutton" hidden onclick="reviewErrors()">Show inputs to fix</button></div><button id="savebutton" class="primary" disabled onclick="save()">Save &amp; reboot</button></div></footer>
 <script>
-let cfg={buttons:[],ble_devices:[]},loaded=false,feedbackId=0,saving=false,scanUntil=0,scanTimer=0;const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let cfg={buttons:[],ble_devices:[]},loaded=false,feedbackId=0,saving=false,closingAp=false,scanUntil=0,scanTimer=0;const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(url,opt={}){let r=await fetch(url,opt);if(!r.ok)throw Error(await r.text());let t=await r.text();return t?JSON.parse(t):{}}
 function msg(t,bad=false){$('message').hidden=false;$('message').className=bad?'bad':'ok';$('message').textContent=t.message||String(t)}
-async function status(){try{
- let s=await api('/api/v1/status');$('connection').textContent='Connected';$('connection').className='badge ok';
+async function status(){if(closingAp)return;try{
+ let s=await api('/api/v1/status');if(closingAp)return;$('connection').textContent='Connected';$('connection').className='badge ok';
  $('status').textContent=s.power_state.replaceAll('_',' ');$('status').className='power-state '+(s.power_state==='fault'?'bad':s.sensed_on?'ok':'');
  $('sensestatus').textContent='Power sensor: '+(s.sensed_on?'on':'off');$('wifistatus').textContent=s.config_ap?'Setup AP · '+s.wifi_ip:s.wifi_connected?s.wifi_ip:'Disconnected';$('zigbeestatus').textContent=s.config_ap&&cfg.radio_profile==='zigbee'?'Paused for setup':s.zigbee_joined?'Joined':s.zigbee_started?'Not joined':'Off';
  $('apnotice').hidden=!s.config_ap;$('factorybutton').disabled=!s.config_ap;
  let p=s.psu_i2c;$('psustatus').textContent=!p.enabled?'PSU I²C disabled':!p.available?'PSU I²C unavailable':`Input ${p.input_voltage_v.toFixed(1)} V, ${p.input_current_a.toFixed(2)} A · Output ${p.output_voltage_v.toFixed(2)} V, ${p.output_current_a.toFixed(2)} A · Internal ${p.internal_temperature_f.toFixed(1)} °F · Fan reading ${p.fan_speed_raw}`;$('otasection').hidden=!s.ota_enabled;
- }catch(e){$('connection').textContent='Disconnected';$('connection').className='badge bad';$('sensestatus').textContent='Connection lost. Reconnect to refresh the power state.'}}
-async function closeAp(){if(!confirm('Turn off the setup access point? This disconnects this page. Unsaved changes will be lost.'))return;try{await api('/api/v1/wifi/ap/close',{method:'POST'});stopUpdates();msg('Setup AP is turning off. Reconnect to your normal network, or open the AP again using a button or serial.')}catch(e){msg(e,true)}}
+ }catch(e){if(closingAp)return;$('connection').textContent='Disconnected';$('connection').className='badge bad';$('sensestatus').textContent='Connection lost. Reconnect to refresh the power state.'}}
+function showApCloseConfirmation(show){if(closingAp)return;$('closeapbutton').hidden=show;$('apcloseconfirmation').hidden=!show;$(show?'cancelcloseap':'closeapbutton').focus()}
+async function closeAp(){if(closingAp||$('apcloseconfirmation').hidden)return;closingAp=true;$('confirmcloseap').disabled=true;$('cancelcloseap').disabled=true;$('confirmcloseap').textContent='Turning off…';try{await api('/api/v1/wifi/ap/close',{method:'POST'});stopUpdates();$('connection').textContent='Setup AP closing';$('connection').className='badge warn';msg('Setup AP is turning off. Reconnect to your normal network, or open the AP again using a button or serial.')}catch(e){closingAp=false;$('confirmcloseap').disabled=false;$('cancelcloseap').disabled=false;$('confirmcloseap').textContent='Turn off and disconnect';msg(e,true)}}
 function updateProfile(){let v=$('radio').value;$('wififields').hidden=v==='zigbee';$('zigbeefields').hidden=v==='wifi';$('profilehint').textContent=v==='zigbee'?'Zigbee runs without Wi-Fi and pauses while the setup AP is open. Close the AP to resume Zigbee.':'Control through your Wi-Fi network. BLE remains available.'}
 function reviewErrors(){let e=document.querySelector('[aria-invalid=true]');if(!e)return;for(let d=e.parentElement;d;d=d.parentElement)if(d.tagName==='DETAILS')d.open=true;e.scrollIntoView({block:'center',behavior:'smooth'});e.focus({preventScroll:true})}
 

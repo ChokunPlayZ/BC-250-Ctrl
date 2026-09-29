@@ -37,15 +37,19 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         (id == WIFI_EVENT_AP_STACONNECTED || id == WIFI_EVENT_AP_STADISCONNECTED)) {
         /* A full five-minute grace period starts when the last client leaves. */
         s_ap_last_activity = xTaskGetTickCount();
+        ESP_LOGI(TAG, "Configuration AP client %s", id == WIFI_EVENT_AP_STACONNECTED ? "connected" : "disconnected");
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED && !s_config_ap) {
         s_connected = false;
         strlcpy(s_ip, "0.0.0.0", sizeof(s_ip));
-        esp_wifi_connect();
+        ESP_LOGW(TAG, "Station disconnected from %.32s (reason=%u); reconnecting", s_config.wifi_ssid,
+                 data != NULL ? ((wifi_event_sta_disconnected_t *)data)->reason : 0);
+        esp_err_t err = esp_wifi_connect();
+        if (err != ESP_OK) ESP_LOGW(TAG, "Station reconnect request failed: %s", esp_err_to_name(err));
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP && !s_config_ap) {
         const ip_event_got_ip_t *event = data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&event->ip_info.ip));
         s_connected = true;
-        ESP_LOGI(TAG, "Station connected at %s", s_ip);
+        ESP_LOGI(TAG, "Station connected to %.32s at %s", s_config.wifi_ssid, s_ip);
     }
 }
 
@@ -145,6 +149,7 @@ static esp_err_t start_ap(void)
     if (s_ap_netif == NULL) s_ap_netif = esp_netif_create_default_wifi_ap();
     if (s_ap_netif == NULL) return ESP_ERR_NO_MEM;
     bool already_open = s_config_ap;
+    ESP_LOGI(TAG, "Opening configuration AP; station mode disabled while portal is open");
     /* Stop and deinitialize the router before Wi-Fi starts accepting clients. */
     ESP_RETURN_ON_ERROR(bc250_zigbee_set_config_ap_active(true), TAG, "pause Zigbee for AP");
     /* Recovery is AP-only so station-side clients cannot bypass portal auth. */
@@ -206,6 +211,7 @@ ap_failed:
 
 static esp_err_t start_station(void)
 {
+    ESP_LOGI(TAG, "Starting Wi-Fi station; SSID=%.32s", s_config.wifi_ssid);
     ESP_RETURN_ON_ERROR(init_wifi_once(), TAG, "Wi-Fi init");
     if (s_sta_netif == NULL) s_sta_netif = esp_netif_create_default_wifi_sta();
     if (s_sta_netif == NULL) return ESP_ERR_NO_MEM;
@@ -225,6 +231,7 @@ static esp_err_t start_station(void)
         s_wifi_started = true;
     }
     ESP_RETURN_ON_ERROR(esp_wifi_connect(), TAG, "station connect");
+    ESP_LOGI(TAG, "Station connection requested; waiting for IP address");
     return bc250_web_server_start();
 }
 
@@ -234,15 +241,21 @@ esp_err_t bc250_wifi_service_start(const bc250_config_t *config, bool force_conf
     s_config = *config;
     bool wants_station = config->radio_profile == BC250_RADIO_WIFI;
     if (force_config_ap || !config->configured || (wants_station && config->wifi_ssid[0] == '\0')) {
+        ESP_LOGI(TAG, "Configuration AP selected: %s", force_config_ap ? "boot/recovery request" :
+                 !config->configured ? "setup incomplete" : "Wi-Fi SSID unset");
         return start_ap();
     }
     if (wants_station) return start_station();
+    ESP_LOGI(TAG, "Wi-Fi station disabled in Zigbee mode; setup AP remains available on request");
     return ESP_OK;
 }
 
 esp_err_t bc250_wifi_open_config_ap(void)
 {
-    if (s_config_ap) return ESP_OK;
+    if (s_config_ap) {
+        ESP_LOGI(TAG, "Configuration AP is already open");
+        return ESP_OK;
+    }
     return start_ap();
 }
 
@@ -250,6 +263,7 @@ esp_err_t bc250_wifi_open_setup_ap(void)
 {
     if (s_config_ap) {
         s_ap_last_activity = xTaskGetTickCount();
+        ESP_LOGI(TAG, "Setup AP already open; idle timer refreshed");
         return bc250_web_server_start();
     }
     return start_ap();
@@ -265,6 +279,7 @@ esp_err_t bc250_wifi_close_config_ap(void)
     s_connected = false;
     bc250_status_led_set_config_mode(false);
     strlcpy(s_ip, "0.0.0.0", sizeof(s_ip));
+    ESP_LOGI(TAG, "Configuration AP closed; restoring %s mode", bc250_radio_profile_name(s_config.radio_profile));
     bool wants_station = s_config.configured && s_config.wifi_ssid[0] != '\0' &&
                          s_config.radio_profile == BC250_RADIO_WIFI;
     esp_err_t err = wants_station ? start_station() : ESP_OK;

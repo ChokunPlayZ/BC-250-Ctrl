@@ -139,6 +139,7 @@ static esp_err_t power_handler(httpd_req_t *request)
         else if (strcmp(action->valuestring, "toggle") == 0) command = BC250_POWER_ACTION_TOGGLE;
         else if (strcmp(action->valuestring, "force_off") == 0) command = BC250_POWER_ACTION_FORCE_OFF;
     }
+    if (command != BC250_POWER_ACTION_NONE) ESP_LOGI(TAG, "HTTP power command: %s", action->valuestring);
     cJSON_Delete(json);
     if (command == BC250_POWER_ACTION_NONE || !bc250_power_service_request(command)) {
         httpd_resp_set_status(request, "409 Conflict");
@@ -163,6 +164,7 @@ static void restart_task(void *arg)
 {
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(750));
+    ESP_LOGI(TAG, "HTTP request restarting controller");
     esp_restart();
 }
 
@@ -302,6 +304,7 @@ static void factory_reset_task(void *arg)
 {
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(750));
+    ESP_LOGW(TAG, "HTTP factory reset requested; erasing all settings and Zigbee state");
     esp_err_t err = nvs_flash_erase();
     if (err == ESP_OK) esp_restart();
     ESP_LOGE(TAG, "Factory reset failed: %s", esp_err_to_name(err));

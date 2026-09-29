@@ -4,7 +4,11 @@ The controller opens an interactive `bc250>` prompt on its primary ESP-IDF conso
 
 Enter ordinary commands and read plain-text replies. There are no JSON commands or JSON replies in the shell. On an ANSI terminal, use Left/Right to edit, Up/Down for recent commands, Tab to complete commands and setting names, Backspace/Delete to correct mistakes, and Ctrl+C to cancel the current line. History holds up to 20 commands in memory and clears on reboot. `set` commands are not added to history.
 
-The shell detects basic terminals automatically and provides a prompt, echo, backspace, and Ctrl+C without terminal escape sequences. Enter `terminal ansi` to enable full editing after switching to a compatible terminal, or `terminal plain` to return to basic input. Disable local echo in your terminal because the controller echoes input. Service logs are reduced to errors once the shell starts; `logs on` restores informational logs and `logs off` returns to errors only.
+The shell detects basic terminals automatically and provides a prompt, echo, backspace, and Ctrl+C without terminal escape sequences. Enter `terminal ansi` to enable full editing after switching to a compatible terminal, or `terminal plain` to return to basic input. Disable local echo in your terminal because the controller echoes input. Informational service logs stay enabled by default. `logs off` reduces them to errors for a quieter prompt; `logs on` restores them. This choice lasts until reboot.
+
+At boot, the console prints the operating mode and radio profile, configuration source and validation status, hostname, Wi-Fi SSID and whether a password is set, Zigbee identity/channel, GPIO assignments, power timings, saved BLE controllers and enabled counts, button actions, and PSU I²C settings. The summary does not print passwords. GPIO `-1` means disabled and Zigbee channel `0` means automatic selection.
+
+Runtime logs show controller arrival with its address and RSSI, absence and rearming, and whether arrival queues power-on or skips it because power is already sensed on. The power service then reports whether a queued command actually triggers a sequence, is unnecessary, or is rejected because shutdown or retry cooldown is active. It also logs debounced button presses/releases and short/double/long gestures with their assigned actions, PS_ON and power-button output changes, filtered power-sense changes, sequence timeouts, Wi-Fi connection/reconnect and AP client events, Zigbee startup/pairing/pause/resume and power requests, configuration promotion, PSU availability, reboot/reset, and firmware upload results. Repeated matching BLE advertisements and unchanged power/PSU polling do not produce informational logs.
 
 ```text
 bc250> status
@@ -46,6 +50,8 @@ Settings saved. Rebooting...
 The radio profile accepts `wifi` or `zigbee`. `wifi ap` pauses Zigbee while the AP is open; closing the AP from the portal or allowing it to expire resumes Zigbee without erasing its pairing. Run `zigbee commission` and `zigbee reset` with the AP closed.
 
 The shell prints `Zigbee: joining network. Enable permit-join on your coordinator.` when joining actually starts, including automatic joining on a factory-new network and joining from a local button. It prints the result when joining succeeds or fails, or `Zigbee: joining stopped.` if the stack is paused, reset, or leaves the network during an attempt. These messages appear even with `logs off`. The `status` command shows `Zigbee: joining` while an attempt is active. A configured status LED flashes twice every second during the attempt; after a failure, enable permit-join and run `zigbee commission` to retry.
+
+For coordinator pairing, moving to another network, radio settings, and ZHA/Zigbee2MQTT device definitions, see [ZIGBEE.md](ZIGBEE.md).
 
 ## Editing settings
 

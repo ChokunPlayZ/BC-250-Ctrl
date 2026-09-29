@@ -27,7 +27,9 @@ static void emit_action(bc250_button_action_t action)
         .type = BC250_EVENT_BUTTON_ACTION,
         .data.button_action = action,
     };
-    if (!bc250_app_event_post(&event, 0)) ESP_LOGW(TAG, "event queue full");
+    if (!bc250_app_event_post(&event, 0)) {
+        ESP_LOGW(TAG, "Button action %s dropped: event queue full", bc250_button_action_name(action));
+    }
 }
 
 static void process_button(int index, uint64_t now)
@@ -35,11 +37,21 @@ static void process_button(int index, uint64_t now)
     const bc250_button_config_t *cfg = &s_config.buttons[index];
     bc250_button_logic_t *rt = &s_runtime[index];
     bool raw = bc250_gpio_read(&cfg->input);
+    bool was_pressed = rt->stable;
     bc250_button_gesture_t gesture = bc250_button_logic_update(
         rt, raw, now, cfg->input.debounce_ms, cfg->double_press_ms, cfg->long_press_ms);
-    if (gesture == BC250_GESTURE_SHORT) emit_action(cfg->short_action);
-    else if (gesture == BC250_GESTURE_DOUBLE) emit_action(cfg->double_action);
-    else if (gesture == BC250_GESTURE_LONG) emit_action(cfg->long_action);
+    if (rt->stable != was_pressed) {
+        ESP_LOGI(TAG, "Button [%d] GPIO %d: %s", index, cfg->input.gpio, rt->stable ? "pressed" : "released");
+    }
+    const char *gesture_name;
+    bc250_button_action_t action;
+    if (gesture == BC250_GESTURE_SHORT) { gesture_name = "short press"; action = cfg->short_action; }
+    else if (gesture == BC250_GESTURE_DOUBLE) { gesture_name = "double press"; action = cfg->double_action; }
+    else if (gesture == BC250_GESTURE_LONG) { gesture_name = "long press"; action = cfg->long_action; }
+    else return;
+    ESP_LOGI(TAG, "Button [%d] GPIO %d: %s -> %s", index, cfg->input.gpio,
+             gesture_name, bc250_button_action_name(action));
+    emit_action(action);
 }
 
 static void button_task(void *arg)
@@ -63,6 +75,8 @@ esp_err_t bc250_button_service_start(const bc250_config_t *config)
         if (!s_config.buttons[i].enabled) continue;
         ESP_RETURN_ON_ERROR(bc250_gpio_init_input(&s_config.buttons[i].input), TAG, "button %d", i);
         bc250_button_logic_init(&s_runtime[i], bc250_gpio_read(&s_config.buttons[i].input), now_ms());
+        ESP_LOGI(TAG, "Button [%d] GPIO %d ready (%s)", i, s_config.buttons[i].input.gpio,
+                 s_runtime[i].stable ? "pressed" : "released");
     }
     return xTaskCreate(button_task, "buttons", 3072, NULL, 5, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }

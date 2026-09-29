@@ -1,6 +1,7 @@
 #include "ble_presence.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <string.h>
 
 #include "app_events.h"
@@ -92,12 +93,17 @@ static void process_advertisement(const struct ble_gap_disc_desc *disc)
         }
         bool arrived = bc250_presence_logic_seen(&s_presence[i], now_ms());
         if (arrived) {
-            ESP_LOGI(TAG, "BLE device arrived: %s", matcher->label);
+            char address[18];
+            bc250_ble_format_address(disc->addr.val, address);
+            ESP_LOGI(TAG, "Controller detected [%d]: %.31s; address=%s; RSSI=%d dBm", i,
+                     matcher->label[0] ? matcher->label : "(unnamed)", address, disc->rssi);
             bc250_app_event_t event = {
                 .type = BC250_EVENT_BLE_ARRIVED,
                 .data.ble_device_index = i,
             };
-            bc250_app_event_post(&event, 0);
+            if (!bc250_app_event_post(&event, 0)) {
+                ESP_LOGW(TAG, "Controller [%d] arrival dropped: event queue full; power-on not requested", i);
+            }
         }
     }
 }
@@ -129,6 +135,12 @@ static esp_err_t start_scan(bool active)
         .filter_duplicates = 0,
     };
     int rc = ble_gap_disc(s_own_address_type, BLE_HS_FOREVER, &params, gap_event, NULL);
+    if (rc == 0) {
+        ESP_LOGI(TAG, "BLE %s scan started: interval=%u ms; window=%u ms", active ? "discovery" : "presence",
+                 s_config.ble_scan_interval_ms, s_config.ble_scan_window_ms);
+    } else {
+        ESP_LOGE(TAG, "BLE %s scan failed: %d", active ? "discovery" : "presence", rc);
+    }
     return rc == 0 ? ESP_OK : ESP_FAIL;
 }
 
@@ -161,13 +173,15 @@ static void presence_task(void *arg)
         uint64_t now = now_ms();
         bool learning = now < s_learning_until_ms;
         if (learning != was_learning && ble_hs_synced()) {
+            if (!learning) ESP_LOGI(TAG, "BLE discovery finished; returning to presence scan");
             ble_gap_disc_cancel();
             start_scan(learning);
             was_learning = learning;
         }
         for (int i = 0; i < s_config.ble_device_count; ++i) {
             if (bc250_presence_logic_expire(&s_presence[i], now, s_config.ble_absent_ms)) {
-                ESP_LOGI(TAG, "BLE device absent: %s", s_config.ble_devices[i].label);
+                ESP_LOGI(TAG, "Controller absent [%d]: %.31s; presence rearmed for next arrival", i,
+                         s_config.ble_devices[i].label[0] ? s_config.ble_devices[i].label : "(unnamed)");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -196,6 +210,7 @@ esp_err_t bc250_ble_start_learning(uint32_t duration_ms)
     memset(s_results, 0, sizeof(s_results));
     s_learning_until_ms = now_ms() + duration_ms;
     portEXIT_CRITICAL(&s_lock);
+    ESP_LOGI(TAG, "BLE discovery requested for %" PRIu32 " ms", duration_ms);
     return ESP_OK;
 }
 

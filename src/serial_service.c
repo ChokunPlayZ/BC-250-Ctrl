@@ -61,6 +61,7 @@ static void reply_result(esp_err_t err, const char *success)
 
 static void reboot(void)
 {
+    ESP_LOGI(TAG, "Serial command requested reboot");
     fflush(stdout);
     vTaskDelay(pdMS_TO_TICKS(750));
     esp_restart();
@@ -259,8 +260,11 @@ static void handle_command(char *line)
              (argc == 2 && !strcmp(command, "power"))) {
         bc250_power_action_t action = power_action(argc == 1 ? command : argv[1]);
         if (action == BC250_POWER_ACTION_NONE) reply_error("Usage: power on|off|toggle|force-off");
-        else if (!bc250_power_service_request(action)) reply_error("Power command unavailable or queue full");
-        else puts("Power command queued. Enter status to check the result.");
+        else {
+            ESP_LOGI(TAG, "Serial power command: %s", argc == 1 ? command : argv[1]);
+            if (!bc250_power_service_request(action)) reply_error("Power command unavailable or queue full");
+            else puts("Power command queued. Enter status to check the result.");
+        }
     } else if (argc == 2 && !strcmp(command, "ble") && !strcmp(argv[1], "scan")) {
         reply_result(bc250_ble_start_learning(15000), "Scanning for 15 seconds. Then enter ble results.");
     } else if (argc == 2 && !strcmp(command, "ble") && !strcmp(argv[1], "results")) print_ble_results();
@@ -286,6 +290,7 @@ static void handle_command(char *line)
         memset(password, 0, sizeof(password));
     } else if (argc == 4 && !strcmp(command, "factory") && !strcmp(argv[1], "reset") &&
                !strcmp(argv[2], "ERASE") && !strcmp(argv[3], "ALL")) {
+        ESP_LOGW(TAG, "Serial factory reset requested; erasing all settings and Zigbee state");
         esp_err_t err = nvs_flash_erase();
         if (err == ESP_OK) { puts("All settings erased. Rebooting..."); reboot(); }
         else reply_error(esp_err_to_name(err));
@@ -371,8 +376,8 @@ static void serial_task(void *arg)
     linenoiseSetMaxLineLen(SERIAL_LINE_MAX + 2);
     linenoiseSetCompletionCallback(complete_command);
     linenoiseSetDumbMode(linenoiseProbe() != 0);
-    esp_log_level_set("*", ESP_LOG_ERROR);
     puts("\nBC250 shell. Enter help for commands.");
+    puts("Service logs enabled; enter logs off for errors only.");
     if (linenoiseIsDumbMode()) puts("Basic terminal mode; use terminal ansi for history and Tab completion.");
     while (true) {
         const char *prompt = s_dirty ? "bc250*> " : "bc250> ";
@@ -413,6 +418,7 @@ esp_err_t bc250_serial_service_start(void)
     return ESP_ERR_NOT_SUPPORTED;
 #endif
     setvbuf(stdin, NULL, _IONBF, 0);
+    esp_log_level_set("*", ESP_LOG_INFO);
     if (xTaskCreate(serial_task, "serial", 8192, NULL, 3, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Unable to start shell");
         return ESP_ERR_NO_MEM;

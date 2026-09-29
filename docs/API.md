@@ -70,6 +70,8 @@ When PSU I²C monitoring and Zigbee are both enabled, endpoint 1 exposes the sta
 
 The corresponding Electrical Measurement multiplier attributes are 1 and divisors are 10 or 100 as shown above. On an invalid PSU sample, the AC attributes become `0xFFFF`, the DC attributes become `0x8000`, and Analog Input StatusFlags `0x006F` sets the fault bit (`0x02`). The fan's PresentValue is then zero and must be ignored while the fault bit is set. Zigbee coordinators can read these attributes directly; presenting each as a named sensor may require a coordinator-specific device definition.
 
+See [the Zigbee guide](ZIGBEE.md) for pairing, the complete endpoint and scaling definitions, reporting behavior, and supplied [Zigbee2MQTT](zigbee/zigbee2mqtt/bc250.mjs) and [ZHA](zigbee/zha/bc250.py) integration files. On PSU failure, the fault flag invalidates any cached fan reading; firmware does not report the zero fan value as a new measurement.
+
 ### `POST /api/v1/factory-reset`
 
 Only available from the configuration AP. Send `{"confirm":"ERASE ALL"}` to erase all NVS configuration and Zigbee network data, then reboot into first-boot provisioning.

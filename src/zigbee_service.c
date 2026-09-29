@@ -79,21 +79,29 @@ static bool signal_handler(const ezb_app_signal_t *signal)
 {
     ezb_app_signal_type_t type = ezb_app_signal_get_type(signal);
     switch (type) {
-    case EZB_ZDO_SIGNAL_SKIP_STARTUP:
-        ezb_bdb_start_top_level_commissioning(EZB_BDB_MODE_INITIALIZATION);
+    case EZB_ZDO_SIGNAL_SKIP_STARTUP: {
+        ESP_LOGI(TAG, "Stack startup; initializing saved Zigbee network state");
+        ezb_err_t err = ezb_bdb_start_top_level_commissioning(EZB_BDB_MODE_INITIALIZATION);
+        if (err != EZB_ERR_NONE) ESP_LOGE(TAG, "Zigbee initialization could not start: %d", err);
         break;
+    }
     case EZB_BDB_SIGNAL_DEVICE_FIRST_START:
     case EZB_BDB_SIGNAL_DEVICE_REBOOT: {
         ezb_bdb_comm_status_t status = *(ezb_bdb_comm_status_t *)ezb_app_signal_get_params(signal);
         if (status == EZB_BDB_STATUS_SUCCESS) {
             s_started = true;
-            if (ezb_bdb_is_factory_new()) commission_cb(NULL);
-            else {
+            if (ezb_bdb_is_factory_new()) {
+                ESP_LOGI(TAG, "Router initialized without a saved network; starting automatic joining");
+                commission_cb(NULL);
+            } else {
                 s_joined = true;
                 s_psu_last_report_us = 0;
+                ESP_LOGI(TAG, "Router restored its saved Zigbee network");
             }
             bc250_zigbee_update_power_state(BC250_POWER_UNKNOWN);
             bc250_zigbee_update_psu_status();
+        } else {
+            ESP_LOGE(TAG, "Router initialization failed: status=%u", (unsigned)status);
         }
         break;
     }
@@ -110,6 +118,7 @@ static bool signal_handler(const ezb_app_signal_t *signal)
         break;
     }
     case EZB_ZDO_SIGNAL_LEAVE:
+        ESP_LOGW(TAG, "Router left the Zigbee network");
         stop_joining();
         s_joined = false;
         s_psu_last_report_us = 0;
@@ -130,12 +139,18 @@ static void zcl_handler(ezb_zcl_core_action_callback_id_t callback_id, void *mes
     }
     bool requested_on = *(bool *)set->in.attribute.data.value;
     /* Local attribute refreshes mirror the sense input and are not commands. */
-    if (requested_on == bc250_power_service_sensed_on()) return;
+    if (requested_on == bc250_power_service_sensed_on()) {
+        ESP_LOGI(TAG, "On/Off attribute %s: no power action; sense already matches", requested_on ? "on" : "off");
+        return;
+    }
+    ESP_LOGI(TAG, "On/Off attribute requested power %s", requested_on ? "on" : "off");
     bc250_app_event_t event = {
         .type = BC250_EVENT_BUTTON_ACTION,
         .data.button_action = requested_on ? BC250_BUTTON_ACTION_ON : BC250_BUTTON_ACTION_OFF,
     };
-    bc250_app_event_post(&event, 0);
+    if (!bc250_app_event_post(&event, 0)) {
+        ESP_LOGW(TAG, "Zigbee power %s action dropped: event queue full", requested_on ? "on" : "off");
+    }
 }
 
 static void add_psu_clusters(ezb_af_ep_desc_t endpoint)
@@ -207,6 +222,8 @@ static esp_err_t create_device(void)
 
 static void zigbee_setup(void)
 {
+    ESP_LOGI(TAG, "Starting Zigbee router; preferred channel=%u (0=auto); endpoint=%u; PSU telemetry=%s",
+             s_config.zigbee_channel, BC250_ZIGBEE_ENDPOINT, s_config.psu_i2c.enabled ? "enabled" : "disabled");
     esp_zigbee_config_t config = {
         .device_config = {
             .device_type = EZB_NWK_DEVICE_TYPE_ROUTER,
@@ -236,6 +253,7 @@ static void zigbee_teardown(void)
     s_started = false;
     s_joined = false;
     ESP_ERROR_CHECK(esp_zigbee_deinit());
+    ESP_LOGI(TAG, "Zigbee router stopped; pairing remains stored");
     s_psu_was_available = false;
     s_psu_last_report_us = 0;
 }
@@ -243,41 +261,61 @@ static void zigbee_teardown(void)
 esp_err_t bc250_zigbee_service_start(const bc250_config_t *config)
 {
     if (config == NULL) return ESP_ERR_INVALID_ARG;
-    if (config->radio_profile == BC250_RADIO_WIFI) return ESP_OK;
+    if (config->radio_profile == BC250_RADIO_WIFI) {
+        ESP_LOGI(TAG, "Zigbee disabled in Wi-Fi mode");
+        return ESP_OK;
+    }
     s_config = *config;
     return bc250_zigbee_runtime_start(zigbee_setup, zigbee_teardown);
 }
 
 esp_err_t bc250_zigbee_set_config_ap_active(bool active)
 {
-    return bc250_zigbee_runtime_set_paused(active);
+    esp_err_t err = bc250_zigbee_runtime_set_paused(active);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Zigbee %s for configuration AP failed: %s", active ? "pause" : "resume", esp_err_to_name(err));
+    } else if (active) {
+        ESP_LOGI(TAG, "Zigbee paused while configuration AP is open");
+    } else {
+        ESP_LOGI(TAG, "Configuration AP released radio; Zigbee resume requested if enabled");
+    }
+    return err;
 }
 
 esp_err_t bc250_zigbee_commission(void)
 {
-    return s_started ? esp_zigbee_task_queue_post(commission_cb, NULL) : ESP_ERR_INVALID_STATE;
+    esp_err_t err = s_started ? esp_zigbee_task_queue_post(commission_cb, NULL) : ESP_ERR_INVALID_STATE;
+    if (err == ESP_OK) ESP_LOGI(TAG, "Commissioning request queued");
+    else ESP_LOGW(TAG, "Commissioning unavailable (router disabled, paused, not ready, or queue full): %s", esp_err_to_name(err));
+    return err;
 }
 
 static void reset_cb(void *arg)
 {
     (void)arg;
     stop_joining();
+    ESP_LOGW(TAG, "Clearing Zigbee pairing");
     esp_zigbee_factory_reset();
 }
 
 esp_err_t bc250_zigbee_factory_reset(void)
 {
-    return s_started ? esp_zigbee_task_queue_post(reset_cb, NULL) : ESP_ERR_INVALID_STATE;
+    esp_err_t err = s_started ? esp_zigbee_task_queue_post(reset_cb, NULL) : ESP_ERR_INVALID_STATE;
+    if (err == ESP_OK) ESP_LOGI(TAG, "Zigbee pairing reset queued");
+    else ESP_LOGW(TAG, "Zigbee pairing reset unavailable: %s", esp_err_to_name(err));
+    return err;
 }
 
 static void update_attribute_cb(void *arg)
 {
     bool on = (bool)(uintptr_t)arg;
     s_internal_attribute_update = true;
-    ezb_zcl_set_attr_value(BC250_ZIGBEE_ENDPOINT, EZB_ZCL_CLUSTER_ID_ON_OFF,
+    ezb_zcl_status_t status = ezb_zcl_set_attr_value(BC250_ZIGBEE_ENDPOINT, EZB_ZCL_CLUSTER_ID_ON_OFF,
                            EZB_ZCL_CLUSTER_SERVER, EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID,
                            EZB_ZCL_STD_MANUF_CODE, &on, false);
     s_internal_attribute_update = false;
+    if (status == EZB_ZCL_STATUS_SUCCESS) ESP_LOGI(TAG, "On/Off attribute updated from power sense: %s", on ? "on" : "off");
+    else ESP_LOGW(TAG, "Power sense attribute update failed: status=0x%02x", status);
 }
 
 void bc250_zigbee_update_power_state(bc250_power_state_t state)

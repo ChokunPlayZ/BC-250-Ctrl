@@ -316,6 +316,8 @@ esp_err_t bc250_config_save_pending(const bc250_config_t *config)
         nvs_close(handle);
     }
     xSemaphoreGive(s_write_lock);
+    if (err == ESP_OK) ESP_LOGI(TAG, "Pending configuration saved; applies on reboot");
+    else ESP_LOGW(TAG, "Pending configuration save failed: %s", esp_err_to_name(err));
     return err;
 }
 
@@ -337,7 +339,10 @@ esp_err_t bc250_config_mark_healthy(void)
         }
         nvs_close(handle);
     }
-    if (err == ESP_OK) s_using_pending = false;
+    if (err == ESP_OK) {
+        s_using_pending = false;
+        ESP_LOGI(TAG, "Pending configuration passed health check and is now active");
+    }
     xSemaphoreGive(s_write_lock);
     return err;
 }
@@ -375,7 +380,7 @@ const char *bc250_button_action_name(bc250_button_action_t action)
 {
     static const char *names[] = {"none", "on", "off", "toggle", "force_off", "config_ap",
                                   "zigbee_commission", "zigbee_reset"};
-    return action <= BC250_BUTTON_ACTION_ZIGBEE_RESET ? names[action] : "none";
+    return (unsigned)action <= BC250_BUTTON_ACTION_ZIGBEE_RESET ? names[action] : "none";
 }
 
 static cJSON *pin_to_json(int gpio, bool active_high)

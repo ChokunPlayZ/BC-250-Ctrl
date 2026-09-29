@@ -1,5 +1,7 @@
 #include "psu_i2c_service.h"
 
+#include <inttypes.h>
+
 #include "core/hp_commonslot_protocol.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
@@ -39,6 +41,7 @@ static void psu_task(void *arg)
 {
     (void)arg;
     bool failure_logged = false;
+    bool sampled = false;
     while (true) {
         uint16_t raw[BC250_HP_COMMONSLOT_REGISTER_COUNT];
         esp_err_t err = ESP_OK;
@@ -62,10 +65,11 @@ static void psu_task(void *arg)
         if (err != ESP_OK && !failure_logged) {
             ESP_LOGW(TAG, "PSU telemetry unavailable: %s", esp_err_to_name(err));
             failure_logged = true;
-        } else if (err == ESP_OK && failure_logged) {
-            ESP_LOGI(TAG, "PSU telemetry restored");
+        } else if (err == ESP_OK && (!sampled || failure_logged)) {
+            ESP_LOGI(TAG, "PSU telemetry %s (address=0x%02x)", failure_logged ? "restored" : "available", s_config.address);
             failure_logged = false;
         }
+        if (err == ESP_OK) sampled = true;
         vTaskDelay(pdMS_TO_TICKS(s_config.poll_interval_ms));
     }
 }
@@ -76,6 +80,8 @@ esp_err_t bc250_psu_i2c_service_start(const bc250_config_t *config)
     s_config = config->psu_i2c;
     s_status.enabled = s_config.enabled;
     if (!s_config.enabled) return ESP_OK;
+    ESP_LOGI(TAG, "Starting PSU telemetry: SDA=%d; SCL=%d; address=0x%02x; poll=%" PRIu32 " ms",
+             s_config.sda_gpio, s_config.scl_gpio, s_config.address, s_config.poll_interval_ms);
 
     esp_err_t err = bc250_i2c_service_start(s_config.sda_gpio, s_config.scl_gpio);
     if (err != ESP_OK) return err;

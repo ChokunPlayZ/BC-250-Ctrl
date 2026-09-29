@@ -20,8 +20,10 @@ esp_err_t bc250_ota_handle_http(httpd_req_t *request)
         return ESP_FAIL;
     }
     esp_ota_handle_t handle;
+    ESP_LOGI(TAG, "Firmware upload starting: %zu bytes to %s", request->content_len, target->label);
     esp_err_t err = esp_ota_begin(target, request->content_len, &handle);
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
         httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA begin failed");
         return err;
     }
@@ -32,12 +34,14 @@ esp_err_t bc250_ota_handle_http(httpd_req_t *request)
                                       remaining < (int)sizeof(buffer) ? remaining : sizeof(buffer));
         if (received == HTTPD_SOCK_ERR_TIMEOUT) continue;
         if (received <= 0) {
+            ESP_LOGE(TAG, "Firmware upload interrupted with %d bytes remaining", remaining);
             esp_ota_abort(handle);
             httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA receive failed");
             return ESP_FAIL;
         }
         err = esp_ota_write(handle, buffer, received);
         if (err != ESP_OK) {
+            ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
             esp_ota_abort(handle);
             httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA write failed");
             return err;
@@ -51,6 +55,7 @@ esp_err_t bc250_ota_handle_http(httpd_req_t *request)
         httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Firmware image rejected");
         return err;
     }
+    ESP_LOGI(TAG, "Firmware image accepted; reboot will use %s", target->label);
     httpd_resp_set_type(request, "application/json");
     httpd_resp_sendstr(request, "{\"accepted\":true,\"reboot_required\":true}");
     return ESP_OK;
