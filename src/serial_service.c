@@ -136,7 +136,8 @@ static void print_status(void)
     puts(present ? "" : " none");
     bc250_psu_i2c_status_t psu = bc250_psu_i2c_service_status();
     if (!psu.enabled) puts("PSU I2C:       disabled");
-    else if (!psu.available) puts("PSU I2C:       unavailable; check wiring and address");
+    else if (!psu.available) printf("PSU I2C:       unavailable; %s\n",
+                                   psu.error[0] ? psu.error : "waiting for first sample");
     else {
         printf("PSU input:     %.2f V, %.2f A\n", (double)psu.input_voltage_v, (double)psu.input_current_a);
         printf("PSU output:    %.2f V, %.2f A\n", (double)psu.output_voltage_v, (double)psu.output_current_a);
@@ -177,17 +178,17 @@ static void scan_i2c(const char *sda_arg, const char *scl_arg)
         reply_error("Usage: i2c scan <sda_gpio> <scl_gpio> (0-31)");
         return;
     }
-    char error[160];
+    char error[BC250_I2C_ERROR_SIZE];
     if (bc250_config_validate_i2c_pins(bc250_config_get(), sda, scl, error, sizeof(error)) != ESP_OK) {
         reply_error(error);
         return;
     }
     uint8_t addresses[BC250_I2C_MAX_SCAN_ADDRESSES];
     size_t count = 0;
-    esp_err_t err = bc250_i2c_service_scan(sda, scl, addresses, sizeof(addresses), &count);
+    esp_err_t err = bc250_i2c_service_scan(sda, scl, addresses, sizeof(addresses), &count, error, sizeof(error));
     if (err != ESP_OK) {
         reply_error(err == ESP_ERR_INVALID_STATE ? "Active I2C bus uses different GPIOs" :
-                    err == ESP_ERR_TIMEOUT ? "I2C bus timed out; check wiring and pull-ups" : esp_err_to_name(err));
+                    error[0] ? error : esp_err_to_name(err));
         return;
     }
     if (!count) puts("No I2C devices found.");

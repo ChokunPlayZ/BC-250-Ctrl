@@ -26,6 +26,7 @@ char *bc250_status_json(void)
     cJSON *psu = cJSON_AddObjectToObject(root, "psu_i2c");
     cJSON_AddBoolToObject(psu, "enabled", psu_status.enabled);
     cJSON_AddBoolToObject(psu, "available", psu_status.available);
+    if (psu_status.error[0]) cJSON_AddStringToObject(psu, "error", psu_status.error);
     if (psu_status.available) {
         cJSON_AddNumberToObject(psu, "age_ms", psu_status.age_ms);
         cJSON_AddNumberToObject(psu, "input_voltage_v", psu_status.input_voltage_v);

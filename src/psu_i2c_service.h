@@ -5,10 +5,12 @@
 
 #include "config_store.h"
 #include "esp_err.h"
+#include "i2c_service.h"
 
 typedef struct {
     bool enabled;
     bool available;
+    char error[BC250_I2C_ERROR_SIZE];
     uint32_t age_ms;
     float input_voltage_v;
     float input_current_a;

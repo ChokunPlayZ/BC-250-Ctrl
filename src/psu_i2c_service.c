@@ -1,6 +1,8 @@
 #include "psu_i2c_service.h"
 
 #include <inttypes.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "core/hp_commonslot_protocol.h"
 #include "driver/i2c_master.h"
@@ -16,22 +18,41 @@ static bc250_psu_i2c_config_t s_config;
 static i2c_master_dev_handle_t s_device;
 static bc250_psu_i2c_status_t s_status;
 static int64_t s_sample_us;
+static bool s_started;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 
-static esp_err_t read_register(uint8_t reg, uint16_t *raw)
+static esp_err_t read_register(uint8_t reg, uint16_t *raw, char error[BC250_I2C_ERROR_SIZE])
 {
-    bc250_i2c_service_lock();
+    esp_err_t err = bc250_i2c_service_lock();
+    if (err != ESP_OK) {
+        snprintf(error, BC250_I2C_ERROR_SIZE, "I2C bus busy or unavailable; retrying on next poll (%s)",
+                 esp_err_to_name(err));
+        return err;
+    }
     uint8_t command[2];
     uint8_t reply[3];
     bc250_hp_commonslot_read_command(s_config.address, reg, command);
-    esp_err_t err = i2c_master_transmit(s_device, command, sizeof(command), 100);
-    if (err == ESP_OK) {
-        // The reference sketch uses separate transactions with a short pause.
-        vTaskDelay(pdMS_TO_TICKS(1) > 0 ? pdMS_TO_TICKS(1) : 1);
-        err = i2c_master_receive(s_device, reply, sizeof(reply), 100);
-        if (err == ESP_OK && !bc250_hp_commonslot_decode_reply(reply, raw)) {
-            err = ESP_ERR_INVALID_CRC;
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        const char *phase = "write";
+        err = i2c_master_transmit(s_device, command, sizeof(command), 100);
+        if (err == ESP_OK) {
+            // The reference sketch uses separate transactions with a short pause.
+            vTaskDelay(pdMS_TO_TICKS(1) > 0 ? pdMS_TO_TICKS(1) : 1);
+            phase = "read";
+            err = i2c_master_receive(s_device, reply, sizeof(reply), 100);
+            if (err == ESP_OK && !bc250_hp_commonslot_decode_reply(reply, raw)) {
+                err = ESP_ERR_INVALID_CRC;
+            }
         }
+        if (err == ESP_OK) {
+            error[0] = '\0';
+            break;
+        }
+        char operation[32];
+        snprintf(operation, sizeof(operation), "%s register 0x%02X", phase, reg);
+        bc250_i2c_service_describe_error(err, s_config.address, operation, error, BC250_I2C_ERROR_SIZE);
+        if (err != ESP_ERR_TIMEOUT || attempt != 0 || bc250_i2c_service_recover() != ESP_OK) break;
+        // Restart the whole command/read pair after clearing an interrupted transfer.
     }
     bc250_i2c_service_unlock();
     return err;
@@ -44,13 +65,15 @@ static void psu_task(void *arg)
     bool sampled = false;
     while (true) {
         uint16_t raw[BC250_HP_COMMONSLOT_REGISTER_COUNT];
+        char error[BC250_I2C_ERROR_SIZE] = "";
         esp_err_t err = ESP_OK;
         for (unsigned i = 0; i < BC250_HP_COMMONSLOT_REGISTER_COUNT; ++i) {
-            err = read_register(bc250_hp_commonslot_registers[i], &raw[i]);
+            err = read_register(bc250_hp_commonslot_registers[i], &raw[i], error);
             if (err != ESP_OK) break;
         }
         portENTER_CRITICAL(&s_lock);
         s_status.available = err == ESP_OK;
+        memcpy(s_status.error, error, sizeof(s_status.error));
         if (err == ESP_OK) {
             s_status.input_voltage_v = bc250_hp_commonslot_scale(0, raw[0]);
             s_status.input_current_a = bc250_hp_commonslot_scale(1, raw[1]);
@@ -63,7 +86,7 @@ static void psu_task(void *arg)
         portEXIT_CRITICAL(&s_lock);
         bc250_zigbee_update_psu_status();
         if (err != ESP_OK && !failure_logged) {
-            ESP_LOGW(TAG, "PSU telemetry unavailable: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, "PSU telemetry unavailable: %s", error);
             failure_logged = true;
         } else if (err == ESP_OK && (!sampled || failure_logged)) {
             ESP_LOGI(TAG, "PSU telemetry %s (address=0x%02x)", failure_logged ? "restored" : "available", s_config.address);
@@ -77,22 +100,48 @@ static void psu_task(void *arg)
 esp_err_t bc250_psu_i2c_service_start(const bc250_config_t *config)
 {
     if (config == NULL) return ESP_ERR_INVALID_ARG;
+    if (s_started) return ESP_ERR_INVALID_STATE;
     s_config = config->psu_i2c;
+    portENTER_CRITICAL(&s_lock);
+    memset(&s_status, 0, sizeof(s_status));
     s_status.enabled = s_config.enabled;
+    s_sample_us = 0;
+    portEXIT_CRITICAL(&s_lock);
     if (!s_config.enabled) return ESP_OK;
     ESP_LOGI(TAG, "Starting PSU telemetry: SDA=%d; SCL=%d; address=0x%02x; poll=%" PRIu32 " ms",
              s_config.sda_gpio, s_config.scl_gpio, s_config.address, s_config.poll_interval_ms);
 
-    esp_err_t err = bc250_i2c_service_start(s_config.sda_gpio, s_config.scl_gpio);
-    if (err != ESP_OK) return err;
+    char error[BC250_I2C_ERROR_SIZE] = "";
+    esp_err_t err = bc250_config_validate_i2c_pins(config, s_config.sda_gpio, s_config.scl_gpio,
+                                                 error, sizeof(error));
+    if (err != ESP_OK) goto failed;
+    if (s_config.address < 0x58 || s_config.address > 0x5f ||
+        s_config.poll_interval_ms < 500 || s_config.poll_interval_ms > 60000) {
+        err = ESP_ERR_INVALID_ARG;
+        snprintf(error, sizeof(error), "Invalid PSU PIC address or polling interval");
+        goto failed;
+    }
+    err = bc250_i2c_service_start(s_config.sda_gpio, s_config.scl_gpio);
+    if (err != ESP_OK) goto failed;
     err = bc250_i2c_service_add_device(s_config.address, 100000, &s_device);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) goto failed;
     if (xTaskCreate(psu_task, "psu_i2c", 3072, NULL, 5, NULL) != pdPASS) {
         bc250_i2c_service_remove_device(s_device);
         s_device = NULL;
-        return ESP_ERR_NO_MEM;
+        err = ESP_ERR_NO_MEM;
+        goto failed;
     }
+    s_started = true;
     return ESP_OK;
+
+failed:
+    if (!error[0]) snprintf(error, sizeof(error), "I2C startup failed (SDA GPIO %d, SCL GPIO %d, PIC 0x%02X): %s",
+                            s_config.sda_gpio, s_config.scl_gpio, s_config.address, esp_err_to_name(err));
+    portENTER_CRITICAL(&s_lock);
+    memcpy(s_status.error, error, sizeof(s_status.error));
+    portEXIT_CRITICAL(&s_lock);
+    ESP_LOGW(TAG, "%s", error);
+    return err;
 }
 
 bc250_psu_i2c_status_t bc250_psu_i2c_service_status(void)

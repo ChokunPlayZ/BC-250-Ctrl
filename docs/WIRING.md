@@ -100,9 +100,23 @@ Configuration AP patterns take precedence over joining; the joining pattern take
 
 ## Optional HP Common Slot PSU I²C
 
-Connect the PSU PIC's SDA and SCL to configured ESP32 SDA/SCL pins, and connect their signal grounds. The PSU bus uses **3.3 V logic**; never apply 5 V to ESP32 GPIOs. Provide suitable 3.3 V pull-ups if the adapter or supply does not already have them. These direct I²C connections are not optically isolated, so check grounding and the exact PSU connector pinout before wiring. Leave the feature disabled until the connections are verified.
+Connect the PSU PIC's SDA and SCL to configured ESP32 SDA/SCL pins, and connect their signal grounds. The **ESP32 side must use 3.3 V logic**; never apply 5 V to ESP32 GPIOs. Verify the PSU/adapter's idle bus voltage before connecting: the [DPS-1200FB reverse-engineering notes](https://github.com/raplin/DPS-1200FB#connecting-i2c) describe weak pull-ups to 5 V on that model. Use an appropriate bidirectional I²C level shifter if the PSU side uses 5 V. Provide suitable external pull-ups on the 3.3 V side, typically 2.2–4.7 kΩ from each line to 3.3 V. Firmware enables weak internal pull-ups as a fallback; these do not replace proper pull-ups or voltage translation. These I²C connections are not optically isolated, so check grounding and the exact PSU connector pinout before wiring. Leave the feature disabled until the connections are verified.
 
 The PIC's 7-bit address is usually `0x5F` when address pins A0–A2 are left high, or `0x58` when all three are low. Other combinations use `0x59`–`0x5E`. This is separate from the EEPROM address. Some models answer only while the PSU is running. The firmware polls read-only registers and reports unavailable data if a transaction or reply checksum fails. There is no known I²C on/off command; switching an HP PSU's output requires a separate connection to its enable signal. Temperature units follow the [reference sketch](https://github.com/ButtSimpleIdeas/DPS-1200-I2C/blob/master/dps1200_read_volts_fan/dps1200_read_volts_fan.ino); the fan value is exposed as a raw reading because its RPM calibration has not been confirmed across models.
+
+### Diagnosing I²C timeouts
+
+Run `i2c scan <SDA> <SCL>` in the serial shell, or **Scan I²C bus** in the web UI. For SDA GPIO 1 and SCL GPIO 2, use `i2c scan 1 2`. Both are valid chip GPIOs on C5/C6; C5's conservative pin list gives GPIO 2 an advisory rather than blocking it. Check the board's actual labels and ensure neither pin is assigned to another controller role. The scan should find the PIC at `0x58`–`0x5F`; an EEPROM at `0x50`–`0x57` alone does not confirm the PIC is responding.
+
+After enabling monitoring and saving/rebooting, `status` and the web PSU status display the last sampling error. The firmware allows 20 ms of clock stretching (subject to the chip driver's limit), keeps the register command and reply together under a bus lock, and clears/retries the entire pair once after a timeout. Failed samples are retried at the configured polling interval.
+
+- `SDA ...=low` or `SCL ...=low` at failure: check signal ground, swapped or shorted wires, pull-ups, level shifting, and whether the PSU is powered. Measure both lines at idle; each should be high on the ESP32 side. Disconnect the PSU to help isolate which side is holding a line low.
+- Both lines high with a timeout: check the actual header pins, pull-up strength, wiring length/noise, and PSU compatibility; a single GPIO snapshot cannot prove correct timing.
+- `ESP_ERR_INVALID_RESPONSE`: the device did not acknowledge a transfer. Check the selected PIC address and PSU power.
+- `reply checksum failed`: communication completed but the reply was invalid. Check signal quality and whether the PSU implements this protocol.
+- `I2C bus busy`: another scan or client held the shared bus for too long. Retry; this message does not diagnose the electrical wiring.
+
+On ESP-IDF 5.5.4/C5, a timeout can also produce `i2c.common: GPIO 1 is not usable, maybe conflict with others` for both SDA/SCL. The [driver's bus-clear path](https://github.com/espressif/esp-idf/blob/v5.5.4/components/esp_driver_i2c/i2c_master.c) configures the pins again, and [pin configuration](https://github.com/espressif/esp-idf/blob/v5.5.4/components/esp_driver_i2c/i2c_common.c) warns about its own existing GPIO reservations. Warnings during recovery therefore do not establish that those pins are forbidden. If they appear at initial bus creation before any failed transfer, investigate an actual peripheral conflict instead.
 
 ## Bring-up order
 

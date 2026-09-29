@@ -2,7 +2,7 @@
 
 ## Automated checks
 
-- Run native state-machine, BLE matcher, shell parsing, typed settings, GPIO advisory/exclusion, recovery erase failure, Wi-Fi mode/client inactivity tests, Zigbee pause/resume lifecycle tests, and status LED pattern tests.
+- Run native state-machine, BLE matcher, shell parsing, typed settings, GPIO advisory/exclusion, recovery erase failure, Wi-Fi mode/client inactivity tests, Zigbee pause/resume lifecycle tests, status LED pattern tests, and I²C scan/PSU transfer tests (recovery, checksum/NACK failure, GPIO diagnostics, busy bus, and concurrent scan/startup).
 - Build C5/C6 in both 4 MB and 8 MB layouts, and both standalone C5 recovery profiles.
 - Confirm each application fits its selected partition.
 - Review compiler warnings and check that generated configuration files are not committed.
@@ -52,6 +52,15 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Edit several related settings with `set`, including quoted SSIDs/passwords and swapping GPIO roles. Verify `bc250*>`, invalid-save correction, `discard`, and persistence only after `save` and reboot.
 - Verify passwords stay hidden in `config`, and newly entered `set` commands are not added to history. Reset the admin password while shell edits exist and confirm a later save preserves the new password.
 - On both C5 flash layouts, connect through the chip's native USB Serial/JTAG port and verify `help`, `status`, `config get`, and `admin reset` accept input after boot and after reconnecting USB.
+
+## Radio interoperability
+
+## I²C hardware checks
+
+- On each chip, scan GPIO 1/2 with a known compatible PSU and verify PIC and EEPROM addresses. Repeat with a different valid pin pair while monitoring is disabled; temporary scans must release the bus. While monitoring runs, reject scans on different pins and verify scans on active pins do not interrupt command/reply pairs.
+- Confirm idle SDA/SCL voltage and external pull-ups on the ESP32 side. Disconnect the PSU and confirm scans complete without found devices. Test missing external pull-ups separately; internal pull-ups are only a fallback.
+- Interrupt a transfer or hold a line low through a suitable test fixture. Verify a bounded bus-clear/retry, a timeout error naming the address/register/phase and pin levels, continued power/serial/web operation, and automatic telemetry restoration after releasing the fault. On C5, distinguish recovery's GPIO reservation warnings from startup conflicts.
+- Select an absent PIC address and inject a corrupt reply. Verify NACK/checksum errors remain unavailable in API and Zigbee, with the error visible through serial and web status; a complete valid sample must clear it.
 
 ## Radio interoperability
 
