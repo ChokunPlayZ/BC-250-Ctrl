@@ -37,7 +37,7 @@ static const field_t root_fields[] = {
     ROOT(sense_on_ms, U16, 1, UINT16_MAX), ROOT(sense_off_ms, U16, 1, UINT16_MAX),
     ROOT(ble_scan_interval_ms, U16, 1, UINT16_MAX), ROOT(ble_scan_window_ms, U16, 1, UINT16_MAX),
     ROOT(ble_absent_ms, U32, 1, UINT32_MAX), ROOT(zigbee_channel, U8, 0, 26),
-    STRING(zigbee_manufacturer), STRING(zigbee_model),
+    STRING(zigbee_model),
     PIN(ps_on), PIN(power_button), PIN(power_sense), PIN(status_led),
     ROOT(power_sense.pull_up, BOOL, 0, 1), ROOT(power_sense.debounce_ms, U16, 0, UINT16_MAX),
     FIELD(bc250_config_t, "timing.strategy", timing.strategy, ENUM, 0, BC250_START_SIMULTANEOUS, strategies),

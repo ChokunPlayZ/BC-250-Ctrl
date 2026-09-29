@@ -232,7 +232,6 @@ void bc250_config_defaults(bc250_config_t *config)
     config->ble_scan_window_ms = 100;
     config->ble_absent_ms = 30000;
     config->zigbee_channel = 0;
-    strlcpy(config->zigbee_manufacturer, "BC250", sizeof(config->zigbee_manufacturer));
     strlcpy(config->zigbee_model, "BC250 Controller", sizeof(config->zigbee_model));
     psu_i2c_defaults(&config->psu_i2c);
     for (size_t i = 0; i < BC250_MAX_BUTTONS; ++i) {
@@ -413,7 +412,6 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddNumberToObject(root, "ble_scan_window_ms", config->ble_scan_window_ms);
     cJSON_AddNumberToObject(root, "ble_absent_ms", config->ble_absent_ms);
     cJSON_AddNumberToObject(root, "zigbee_channel", config->zigbee_channel);
-    cJSON_AddStringToObject(root, "zigbee_manufacturer", config->zigbee_manufacturer);
     cJSON_AddStringToObject(root, "zigbee_model", config->zigbee_model);
     cJSON *psu = cJSON_AddObjectToObject(root, "psu_i2c");
     cJSON_AddBoolToObject(psu, "enabled", config->psu_i2c.enabled);
@@ -566,9 +564,6 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
 #undef PATCH_ROOT_U32
     item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_channel");
     if (cJSON_IsNumber(item)) config->zigbee_channel = item->valueint;
-    item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_manufacturer");
-    if (cJSON_IsString(item)) strlcpy(config->zigbee_manufacturer, item->valuestring,
-                                      sizeof(config->zigbee_manufacturer));
     item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_model");
     if (cJSON_IsString(item)) strlcpy(config->zigbee_model, item->valuestring,
                                       sizeof(config->zigbee_model));

@@ -48,7 +48,7 @@ def has_psu_clusters(device):
 
 
 builder = (
-    QuirkBuilder("BC250", "BC250 Controller")
+    QuirkBuilder("CKLabs", "BC250 Controller")
     .filter(has_psu_clusters)
     .replaces(BC250FanInput, endpoint_id=1)
     # Avoid duplicate generic sensors and a writable Analog Input number entity.

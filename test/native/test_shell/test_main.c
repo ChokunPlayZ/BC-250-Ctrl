@@ -75,6 +75,10 @@ static void test_settings(void)
     set(&config, "radio", "zigbee");
     assert(config.radio_profile == BC250_RADIO_ZIGBEE);
     reject(&config, "radio", "hybrid");
+    reject(&config, "zigbee_manufacturer", "Other vendor");
+    reject(&config, "zigbee_manufacturer", "CKLabs");
+    set(&config, "zigbee_model", "Custom model");
+    assert(!strcmp(config.zigbee_model, "Custom model"));
     set(&config, "timing.strategy", "button_only");
     assert(config.timing.strategy == BC250_START_BUTTON_ONLY);
     set(&config, "configured", "yes");
@@ -132,6 +136,7 @@ static void test_settings(void)
     char key[80], error[160];
     size_t count = 0;
     while (bc250_serial_config_key(count, key, sizeof(key))) {
+        assert(strcmp(key, "zigbee_manufacturer") != 0);
         error[0] = '\0';
         bc250_serial_config_set(&config, key, "", error, sizeof(error));
         assert(strncmp(error, "Unknown setting", 15) != 0);

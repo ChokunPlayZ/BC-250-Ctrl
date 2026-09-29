@@ -108,7 +108,7 @@ typedef struct {
     uint8_t ble_device_count;
     bc250_ble_device_config_t ble_devices[BC250_MAX_BLE_DEVICES];
     uint8_t zigbee_channel;
-    char zigbee_manufacturer[33];
+    uint8_t reserved_zigbee_manufacturer[33]; /* Preserve legacy NVS blob layout. */
     char zigbee_model[33];
     bc250_psu_i2c_config_t psu_i2c;
 } bc250_config_t;

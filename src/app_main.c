@@ -49,9 +49,9 @@ static void log_boot_config(const bc250_config_t *config, bool first_boot, bool 
              config->configured ? "yes" : "no", config_valid ? "valid" : "invalid", config->hostname);
     ESP_LOGI(TAG, "Wi-Fi SSID: %.32s; password: %s", config->wifi_ssid[0] ? config->wifi_ssid : "(unset)",
              config->wifi_password[0] ? "set" : "unset");
-    ESP_LOGI(TAG, "Zigbee: %s; preferred channel: %u (0=auto); manufacturer: %.32s; model: %.32s",
+    ESP_LOGI(TAG, "Zigbee: %s; preferred channel: %u (0=auto); model: %.32s",
              config->radio_profile == BC250_RADIO_WIFI ? "disabled" : "router",
-             config->zigbee_channel, config->zigbee_manufacturer, config->zigbee_model);
+             config->zigbee_channel, config->zigbee_model);
     ESP_LOGI(TAG, "GPIOs: PS_ON=%d (%s), power button=%d (%s), power sense=%d (%s), status LED=%d",
              config->ps_on.gpio, config->ps_on.active_high ? "active high" : "active low",
              config->power_button.gpio, config->power_button.active_high ? "active high" : "active low",

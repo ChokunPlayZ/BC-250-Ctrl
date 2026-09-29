@@ -67,9 +67,9 @@ const telemetry = {
 };
 
 export default {
-    fingerprint: [{manufacturerName: 'BC250', modelID: 'BC250 Controller'}],
+    fingerprint: [{manufacturerName: 'CKLabs', modelID: 'BC250 Controller'}],
     model: 'BC250 Controller',
-    vendor: 'BC250',
+    vendor: 'CKLabs',
     description: 'BC-250 sensed power controller with optional HP Common Slot PSU telemetry',
     fromZigbee: [fz.on_off, electrical, fan],
     toZigbee: [power, telemetry],

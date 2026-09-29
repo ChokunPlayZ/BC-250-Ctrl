@@ -23,7 +23,8 @@
 
 static const char *TAG = "zigbee";
 static bc250_config_t s_config;
-static uint8_t s_manufacturer[34];
+/* ZCL character string: length byte followed by the fixed manufacturer. */
+static uint8_t s_manufacturer[] = "\x06" "CKLabs";
 static uint8_t s_model[34];
 static volatile bool s_started;
 static volatile bool s_joining;
@@ -200,7 +201,6 @@ static void add_psu_clusters(ezb_af_ep_desc_t endpoint)
 
 static esp_err_t create_device(void)
 {
-    make_zcl_string(s_config.zigbee_manufacturer, s_manufacturer);
     make_zcl_string(s_config.zigbee_model, s_model);
     ezb_af_device_desc_t device = ezb_af_create_device_desc();
     ezb_zha_on_off_light_config_t light = EZB_ZHA_ON_OFF_LIGHT_CONFIG();
