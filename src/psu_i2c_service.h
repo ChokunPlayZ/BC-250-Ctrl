@@ -4,8 +4,16 @@
 #include <stdint.h>
 
 #include "config_store.h"
+#include "core/hp_commonslot_identity.h"
 #include "esp_err.h"
 #include "i2c_service.h"
+
+typedef struct {
+    bool available;
+    uint8_t eeprom_address;
+    char error[BC250_I2C_ERROR_SIZE];
+    bc250_hp_commonslot_identity_t data;
+} bc250_psu_i2c_identity_status_t;
 
 typedef struct {
     bool enabled;
@@ -18,6 +26,7 @@ typedef struct {
     float output_current_a;
     float internal_temperature_f;
     uint16_t fan_speed_raw;
+    bc250_psu_i2c_identity_status_t identity;
 } bc250_psu_i2c_status_t;
 
 esp_err_t bc250_psu_i2c_service_start(const bc250_config_t *config);

@@ -27,3 +27,5 @@ esp_err_t i2c_master_bus_reset(i2c_master_bus_handle_t bus);
 esp_err_t i2c_master_probe(i2c_master_bus_handle_t bus, uint16_t address, int timeout);
 esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t *data, size_t size, int timeout);
 esp_err_t i2c_master_receive(i2c_master_dev_handle_t device, uint8_t *data, size_t size, int timeout);
+esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t device, const uint8_t *write_data,
+                                     size_t write_size, uint8_t *read_data, size_t read_size, int timeout);

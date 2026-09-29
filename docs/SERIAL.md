@@ -28,7 +28,7 @@ Settings saved. Rebooting...
 | Command | Result |
 |---|---|
 | `help` or `?` | Show commands and examples |
-| `status` | Readable power, Wi-Fi, Zigbee, BLE presence, and PSU telemetry with units |
+| `status` | Readable power, Wi-Fi, Zigbee, BLE presence, PSU telemetry, and available EEPROM identification |
 | `on`, `off`, `toggle`, `force-off` | Queue a power action; `power <action>` also works |
 | `config` | List settings, including unsaved edits; passwords stay hidden |
 | `set <setting> <value>` | Edit one setting in memory |
@@ -36,7 +36,7 @@ Settings saved. Rebooting...
 | `discard` | Discard unsaved edits |
 | `ble scan` | Start a 15-second discovery scan |
 | `ble results` | Show discovered addresses, names, address types, and RSSI |
-| `i2c scan <SDA> <SCL>` | Scan validated I²C pins; show hexadecimal and decimal addresses |
+| `i2c scan <SDA> <SCL>` | Scan validated I²C pins; show addresses, progress, and partial results after a fault |
 | `zigbee commission`, `zigbee reset` | Start joining or clear only Zigbee network state |
 | `wifi ap` | Open the setup AP in any radio profile; closes after five minutes with no connected clients |
 | `admin reset` | Generate, save, and display a new admin password once |

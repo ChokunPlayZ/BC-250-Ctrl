@@ -27,6 +27,26 @@ char *bc250_status_json(void)
     cJSON_AddBoolToObject(psu, "enabled", psu_status.enabled);
     cJSON_AddBoolToObject(psu, "available", psu_status.available);
     if (psu_status.error[0]) cJSON_AddStringToObject(psu, "error", psu_status.error);
+    if (psu_status.enabled) {
+        const bc250_psu_i2c_identity_status_t *identity = &psu_status.identity;
+        cJSON *info = cJSON_AddObjectToObject(psu, "identity");
+        cJSON_AddBoolToObject(info, "available", identity->available);
+        cJSON_AddNumberToObject(info, "eeprom_address", identity->eeprom_address);
+        if (identity->error[0]) cJSON_AddStringToObject(info, "error", identity->error);
+        if (identity->available) {
+#define ADD_IDENTITY_TEXT(field) \
+            if (identity->data.field[0]) cJSON_AddStringToObject(info, #field, identity->data.field)
+            ADD_IDENTITY_TEXT(manufacturer);
+            ADD_IDENTITY_TEXT(product_name);
+            ADD_IDENTITY_TEXT(part_number);
+            ADD_IDENTITY_TEXT(revision);
+            ADD_IDENTITY_TEXT(serial_number);
+            ADD_IDENTITY_TEXT(board_part_number);
+#undef ADD_IDENTITY_TEXT
+            if (identity->data.rated_capacity_w)
+                cJSON_AddNumberToObject(info, "rated_capacity_w", identity->data.rated_capacity_w);
+        }
+    }
     if (psu_status.available) {
         cJSON_AddNumberToObject(psu, "age_ms", psu_status.age_ms);
         cJSON_AddNumberToObject(psu, "input_voltage_v", psu_status.input_voltage_v);

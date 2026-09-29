@@ -10,6 +10,8 @@ All configuration responses redact the Wi-Fi password and password hash. Sending
 
 Returns firmware version, authoritative power state, sensed state, output activity, Wi-Fi status, Zigbee status, OTA capability, currently present BLE matcher labels, and an HP Common Slot protocol `psu_i2c` object. When PSU I²C is enabled and a complete checksum-verified sample is available, the object includes `age_ms`, `input_voltage_v`, `input_current_a`, `output_voltage_v`, `output_current_a`, `internal_temperature_f`, and `fan_speed_raw`. When communication fails, `available` is false and those values are omitted. An `error` string describes startup or sampling failures; transfer errors include the PIC address, register, write/read phase, and SDA/SCL GPIO levels. It clears after a complete valid sample.
 
+When PSU I²C is enabled, `psu_i2c.identity` reports the paired EEPROM address, independent `available`/`error` state, and any checksum-verified FRU `manufacturer`, `product_name`, `part_number`, `revision`, `serial_number`, `board_part_number`, and `rated_capacity_w`. Empty or unsupported fields are omitted. Identification is retried about once a minute; its failure does not hide valid PIC telemetry. The EEPROM is read only.
+
 ### `POST /api/v1/wifi/ap/close`
 
 Closes the active setup/recovery AP without saving configuration or rebooting. Returns `202 Accepted` before disconnecting clients. Wi-Fi devices resume their saved Wi-Fi station connection; Zigbee-only devices stop Wi-Fi and resume the Zigbee router with its saved pairing. Unconfigured devices stop Wi-Fi. Returns `409 Conflict` if the AP is already off. All APs also close automatically after five minutes without any connected Wi-Fi clients; a connected client keeps the AP open, and the idle period restarts when the last client leaves.
@@ -46,7 +48,7 @@ Scans 7-bit I²C addresses `0x08`–`0x77` on the supplied SDA/SCL pins and retu
 {"sda_gpio":4,"scl_gpio":5}
 ```
 
-Example response: `{"addresses":[88,95]}`. A `409 Conflict` means the running I²C bus uses different pins. A timed-out probe gets one bus-clear/retry attempt. If it still fails, the error response identifies the address and SDA/SCL GPIO levels. A separate busy message means another client held the bus for over one second; retry the scan. Internal pull-ups are enabled as a fallback, but external 3.3 V pull-ups are recommended.
+Example complete response: `{"complete":true,"scanned_addresses":112,"timeout_count":0,"addresses":[88,95]}`. A `409 Conflict` means the running I²C bus uses different pins. A timed-out probe gets one bus-clear/retry attempt. If the bus returns idle, the scan continues and reports the timed-out address in `error` with `complete:false`; results can still contain later devices. A held-low line or the three-second scan limit stops early, with `scanned_addresses` and any devices found before the fault preserved in a `200 OK` response. Thus `addresses:[]` with `complete:false` is inconclusive. A separate busy message means another client held the bus for over one second; retry the scan. Internal pull-ups are enabled as a fallback, but external 3.3 V pull-ups are recommended.
 
 ### `GET /api/v1/events`
 

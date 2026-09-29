@@ -24,6 +24,7 @@ idf_component_register(
         "core/power_logic.c"
         "core/presence_logic.c"
         "core/hp_commonslot_protocol.c"
+        "core/hp_commonslot_identity.c"
         "core/shell_args.c"
     INCLUDE_DIRS
         "."

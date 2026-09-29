@@ -12,7 +12,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 - Reads the board's power LED through an optocoupler, so reported power state comes from the hardware rather than the last command sent.
 - Supports four startup methods: PS_ON only, power button only, PS_ON followed by the power button, or both at the same time.
 - Supports normal shutdown and an explicit five-second force-off action. A failed startup or shutdown enters a fault state instead of repeatedly toggling the outputs.
-- Optionally monitors PSUs using the HP Common Slot protocol, including DPS-1200/750 models, through their 3.3 V I²C PIC interface. The web status and REST API show input/output voltage and current, internal temperature, and the fan reading.
+- Optionally monitors PSUs using the HP Common Slot protocol, including DPS-1200/750 models, through their I²C PIC interface. The web status and REST API show input/output voltage and current, internal temperature, the fan reading, and any validated identification available from a paired EEPROM. Check the PSU-side bus voltage before connecting it to 3.3 V ESP32 GPIOs.
 
 ### Local controls and automation
 
@@ -132,4 +132,4 @@ Hardware acceptance still requires an optocoupler loopback fixture and real ZHA/
 
 ## Credits
 
-The HP Common Slot protocol implementation draws on the [DPS-1200-I2C project](https://github.com/ButtSimpleIdeas/DPS-1200-I2C) by Butt Simple Ideas, LLC. Its Arduino examples and documentation provided the register addresses, measurement scaling, and connection guidance. [Richard Aplin's DPS-1200FB work](https://github.com/raplin/DPS-1200FB) helped verify the reply checksum handling.
+The HP Common Slot protocol implementation draws on the [DPS-1200-I2C project](https://github.com/ButtSimpleIdeas/DPS-1200-I2C) by Butt Simple Ideas, LLC. Its Arduino examples and documentation provided the register addresses, measurement scaling, and connection guidance. [Richard Aplin's DPS-1200FB work](https://github.com/raplin/DPS-1200FB) helped verify the reply checksum handling. [slundell's DPS charger research](https://github.com/slundell/dps_charger) documented the separate identification EEPROM and Common Slot pinout; EEPROM fields are decoded using the [IPMI FRU Information Storage Definition](https://www.intel.com/content/dam/www/public/us/en/documents/specification-updates/ipmi-platform-mgt-fru-info-storage-def-v1-0-rev-1-3-spec-update.pdf).

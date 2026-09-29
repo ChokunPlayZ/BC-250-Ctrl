@@ -145,6 +145,22 @@ static void print_status(void)
         printf("PSU fan:       %u (raw)\n", psu.fan_speed_raw);
         printf("PSU sample:    %" PRIu32 " ms old\n", psu.age_ms);
     }
+    if (psu.enabled) {
+        const bc250_psu_i2c_identity_status_t *identity = &psu.identity;
+        if (!identity->available) printf("PSU identity:  %s\n",
+                                         identity->error[0] ? identity->error : "waiting for EEPROM read");
+        else {
+            printf("PSU EEPROM:    0x%02X\n", identity->eeprom_address);
+            const bc250_hp_commonslot_identity_t *info = &identity->data;
+            if (info->manufacturer[0]) printf("PSU maker:     %s\n", info->manufacturer);
+            if (info->product_name[0]) printf("PSU product:   %s\n", info->product_name);
+            if (info->part_number[0]) printf("PSU part:      %s\n", info->part_number);
+            if (info->revision[0]) printf("PSU revision:  %s\n", info->revision);
+            if (info->serial_number[0]) printf("PSU serial/CT: %s\n", info->serial_number);
+            if (info->board_part_number[0]) printf("PSU board PN:  %s\n", info->board_part_number);
+            if (info->rated_capacity_w) printf("PSU capacity:  %u W (rated)\n", info->rated_capacity_w);
+        }
+    }
 }
 
 static void print_ble_results(void)
@@ -185,13 +201,17 @@ static void scan_i2c(const char *sda_arg, const char *scl_arg)
     }
     uint8_t addresses[BC250_I2C_MAX_SCAN_ADDRESSES];
     size_t count = 0;
-    esp_err_t err = bc250_i2c_service_scan(sda, scl, addresses, sizeof(addresses), &count, error, sizeof(error));
+    bc250_i2c_scan_progress_t progress;
+    esp_err_t err = bc250_i2c_service_scan(sda, scl, addresses, sizeof(addresses), &count,
+                                          error, sizeof(error), &progress);
     if (err != ESP_OK) {
         reply_error(err == ESP_ERR_INVALID_STATE ? "Active I2C bus uses different GPIOs" :
                     error[0] ? error : esp_err_to_name(err));
-        return;
+        if (progress.scanned_addresses == 0) return;
     }
-    if (!count) puts("No I2C devices found.");
+    printf("Scanned %zu of %u addresses; %zu timed out.\n", progress.scanned_addresses,
+           BC250_I2C_MAX_SCAN_ADDRESSES, progress.timeout_count);
+    if (!count) puts(err == ESP_OK ? "No I2C devices found." : "No devices detected; scan results are incomplete.");
     else {
         printf("Found %zu I2C device%s:", count, count == 1 ? "" : "s");
         for (size_t i = 0; i < count; ++i) printf(" 0x%02X (%u)", addresses[i], addresses[i]);

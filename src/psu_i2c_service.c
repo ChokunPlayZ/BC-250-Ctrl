@@ -16,10 +16,48 @@
 static const char *TAG = "psu_i2c";
 static bc250_psu_i2c_config_t s_config;
 static i2c_master_dev_handle_t s_device;
+static i2c_master_dev_handle_t s_eeprom_device;
 static bc250_psu_i2c_status_t s_status;
 static int64_t s_sample_us;
 static bool s_started;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static void read_identity(void)
+{
+    bc250_psu_i2c_identity_status_t identity = {.eeprom_address = (uint8_t)(s_config.address - 8)};
+    esp_err_t err = ESP_OK;
+    if (s_eeprom_device == NULL)
+        err = bc250_i2c_service_add_device(identity.eeprom_address, 100000, &s_eeprom_device);
+    if (err == ESP_OK) err = bc250_i2c_service_lock();
+    if (err == ESP_OK) {
+        uint8_t eeprom[BC250_HP_EEPROM_SIZE];
+        for (unsigned attempt = 0; attempt < 2; ++attempt) {
+            for (unsigned offset = 0; offset < sizeof(eeprom); offset += 32) {
+                uint8_t pointer = (uint8_t)offset;
+                // A one-byte EEPROM address selects the read pointer; no EEPROM contents are written.
+                err = i2c_master_transmit_receive(s_eeprom_device, &pointer, 1, eeprom + offset, 32, 100);
+                if (err != ESP_OK) break;
+            }
+            if (err == ESP_OK) break;
+            bc250_i2c_service_describe_error(err, identity.eeprom_address, "EEPROM read",
+                                             identity.error, sizeof(identity.error));
+            if (err != ESP_ERR_TIMEOUT || attempt != 0 || bc250_i2c_service_recover() != ESP_OK) break;
+        }
+        if (err == ESP_OK) {
+            identity.error[0] = '\0';
+            identity.available = bc250_hp_commonslot_decode_identity(eeprom, sizeof(eeprom), &identity.data);
+            if (!identity.available) snprintf(identity.error, sizeof(identity.error),
+                                               "EEPROM at 0x%02X has unsupported or corrupt FRU identification",
+                                               identity.eeprom_address);
+        }
+        bc250_i2c_service_unlock();
+    } else {
+        snprintf(identity.error, sizeof(identity.error), "PSU identification unavailable: %s", esp_err_to_name(err));
+    }
+    portENTER_CRITICAL(&s_lock);
+    s_status.identity = identity;
+    portEXIT_CRITICAL(&s_lock);
+}
 
 static esp_err_t read_register(uint8_t reg, uint16_t *raw, char error[BC250_I2C_ERROR_SIZE])
 {
@@ -63,6 +101,7 @@ static void psu_task(void *arg)
     (void)arg;
     bool failure_logged = false;
     bool sampled = false;
+    int64_t next_identity_us = 0;
     while (true) {
         uint16_t raw[BC250_HP_COMMONSLOT_REGISTER_COUNT];
         char error[BC250_I2C_ERROR_SIZE] = "";
@@ -84,6 +123,12 @@ static void psu_task(void *arg)
             s_sample_us = esp_timer_get_time();
         }
         portEXIT_CRITICAL(&s_lock);
+        // Identification is optional and uses its own error/availability state.
+        int64_t now = esp_timer_get_time();
+        if (now >= next_identity_us) {
+            read_identity();
+            next_identity_us = esp_timer_get_time() + 60000000;
+        }
         bc250_zigbee_update_psu_status();
         if (err != ESP_OK && !failure_logged) {
             ESP_LOGW(TAG, "PSU telemetry unavailable: %s", error);
@@ -105,6 +150,7 @@ esp_err_t bc250_psu_i2c_service_start(const bc250_config_t *config)
     portENTER_CRITICAL(&s_lock);
     memset(&s_status, 0, sizeof(s_status));
     s_status.enabled = s_config.enabled;
+    s_status.identity.eeprom_address = (uint8_t)(s_config.address - 8);
     s_sample_us = 0;
     portEXIT_CRITICAL(&s_lock);
     if (!s_config.enabled) return ESP_OK;
@@ -125,7 +171,7 @@ esp_err_t bc250_psu_i2c_service_start(const bc250_config_t *config)
     if (err != ESP_OK) goto failed;
     err = bc250_i2c_service_add_device(s_config.address, 100000, &s_device);
     if (err != ESP_OK) goto failed;
-    if (xTaskCreate(psu_task, "psu_i2c", 3072, NULL, 5, NULL) != pdPASS) {
+    if (xTaskCreate(psu_task, "psu_i2c", 4096, NULL, 5, NULL) != pdPASS) {
         bc250_i2c_service_remove_device(s_device);
         s_device = NULL;
         err = ESP_ERR_NO_MEM;

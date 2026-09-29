@@ -243,17 +243,27 @@ static esp_err_t i2c_scan_handler(httpd_req_t *request)
 
     uint8_t addresses[BC250_I2C_MAX_SCAN_ADDRESSES];
     size_t count = 0;
-    esp_err_t err = bc250_i2c_service_scan(sda_gpio, scl_gpio, addresses, sizeof(addresses), &count, error, sizeof(error));
+    bc250_i2c_scan_progress_t progress;
+    esp_err_t err = bc250_i2c_service_scan(sda_gpio, scl_gpio, addresses, sizeof(addresses), &count,
+                                          error, sizeof(error), &progress);
     if (err == ESP_ERR_INVALID_STATE) {
         httpd_resp_set_status(request, "409 Conflict");
         return httpd_resp_sendstr(request, "The active I2C bus uses different GPIOs or is unavailable");
     }
-    if (err != ESP_OK) {
+    if (err != ESP_OK && progress.scanned_addresses == 0) {
         httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
                             error[0] ? error : esp_err_to_name(err));
         return ESP_FAIL;
     }
     cJSON *response = cJSON_CreateObject();
+    if (response == NULL) {
+        httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    cJSON_AddBoolToObject(response, "complete", err == ESP_OK);
+    cJSON_AddNumberToObject(response, "scanned_addresses", progress.scanned_addresses);
+    cJSON_AddNumberToObject(response, "timeout_count", progress.timeout_count);
+    if (err != ESP_OK) cJSON_AddStringToObject(response, "error", error[0] ? error : esp_err_to_name(err));
     cJSON *found = response ? cJSON_AddArrayToObject(response, "addresses") : NULL;
     if (found != NULL) {
         for (size_t i = 0; i < count; ++i) {

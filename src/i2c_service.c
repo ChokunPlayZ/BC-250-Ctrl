@@ -5,6 +5,7 @@
 
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -128,8 +129,11 @@ void bc250_i2c_service_describe_error(esp_err_t err, uint8_t address, const char
 }
 
 esp_err_t bc250_i2c_service_scan(int sda_gpio, int scl_gpio, uint8_t *addresses,
-                                size_t capacity, size_t *count, char *error, size_t error_size)
+                                size_t capacity, size_t *count, char *error, size_t error_size,
+                                bc250_i2c_scan_progress_t *progress)
 {
+    bc250_i2c_scan_progress_t scanned = {0};
+    if (progress != NULL) *progress = scanned;
     if (error != NULL && error_size > 0) error[0] = '\0';
     if (count != NULL) *count = 0;
     if (addresses == NULL || count == NULL || capacity == 0) return ESP_ERR_INVALID_ARG;
@@ -150,13 +154,42 @@ esp_err_t bc250_i2c_service_scan(int sda_gpio, int scl_gpio, uint8_t *addresses,
         return result;
     }
 
+    int64_t deadline = esp_timer_get_time() + 3000000;
     for (uint8_t address = 0x08; address <= 0x77; ++address) {
+        if (esp_timer_get_time() >= deadline) {
+            result = ESP_ERR_TIMEOUT;
+            describe_error(result, sda_gpio, scl_gpio, address, "scan stopped (time limit)", error, error_size);
+            break;
+        }
+        ++scanned.scanned_addresses;
         esp_err_t err = i2c_master_probe(bus, address, 100);
+        bool stop = false;
         if (err == ESP_ERR_TIMEOUT) {
             // A scan may follow an interrupted transfer. Clear the bus and retry once.
-            describe_error(err, sda_gpio, scl_gpio, address, "scan", error, error_size);
             esp_err_t recovery = i2c_master_bus_reset(bus);
-            if (recovery == ESP_OK) err = i2c_master_probe(bus, address, 100);
+            const char *operation = "scan";
+            if (recovery != ESP_OK) {
+                operation = "scan stopped (recovery failed)";
+                stop = true;
+            } else if (!gpio_get_level(scl_gpio)) {
+                operation = "scan stopped (clock held low)";
+                stop = true;
+            } else if (!gpio_get_level(sda_gpio)) {
+                operation = "scan stopped (data held low)";
+                stop = true;
+            } else {
+                err = i2c_master_probe(bus, address, 100);
+                if (err == ESP_ERR_TIMEOUT && (!gpio_get_level(scl_gpio) || !gpio_get_level(sda_gpio))) {
+                    operation = "scan stopped (bus held low)";
+                    stop = true;
+                }
+            }
+            if (err == ESP_ERR_TIMEOUT) {
+                ++scanned.timeout_count;
+                if (stop || scanned.timeout_count == 1)
+                    describe_error(err, sda_gpio, scl_gpio, address, operation, error, error_size);
+                result = err;
+            }
         }
         if (err == ESP_OK) {
             if (*count == capacity) {
@@ -166,17 +199,19 @@ esp_err_t bc250_i2c_service_scan(int sda_gpio, int scl_gpio, uint8_t *addresses,
             addresses[(*count)++] = address;
         } else if (err != ESP_ERR_NOT_FOUND) {
             result = err;
-            // Preserve the original line levels if bus recovery itself failed.
-            if (error == NULL || error_size == 0 || error[0] == '\0' || err != ESP_ERR_TIMEOUT)
+            if (err != ESP_ERR_TIMEOUT) {
                 describe_error(err, sda_gpio, scl_gpio, address, "scan", error, error_size);
-            break;
+                break;
+            }
+            // An address-specific timeout on an idle bus need not stop the sweep.
+            if (stop) break;
         }
-        if (error != NULL && error_size > 0) error[0] = '\0';
     }
     if (temporary) {
         esp_err_t cleanup = i2c_del_master_bus(bus);
         if (result == ESP_OK) result = cleanup;
     }
     bc250_i2c_service_unlock();
+    if (progress != NULL) *progress = scanned;
     return result;
 }

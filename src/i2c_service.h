@@ -9,6 +9,11 @@
 #define BC250_I2C_MAX_SCAN_ADDRESSES 112
 #define BC250_I2C_ERROR_SIZE 224
 
+typedef struct {
+    size_t scanned_addresses;
+    size_t timeout_count;
+} bc250_i2c_scan_progress_t;
+
 // One shared bus for I2C clients. Repeated starts must use the same pins.
 esp_err_t bc250_i2c_service_start(int sda_gpio, int scl_gpio);
 esp_err_t bc250_i2c_service_add_device(uint8_t address, uint32_t speed_hz,
@@ -27,4 +32,5 @@ void bc250_i2c_service_describe_error(esp_err_t err, uint8_t address, const char
 
 // Scan the active bus, or temporarily open one on the supplied pins.
 esp_err_t bc250_i2c_service_scan(int sda_gpio, int scl_gpio, uint8_t *addresses,
-                                size_t capacity, size_t *count, char *error, size_t error_size);
+                                size_t capacity, size_t *count, char *error, size_t error_size,
+                                bc250_i2c_scan_progress_t *progress);
