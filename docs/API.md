@@ -10,7 +10,11 @@ All configuration responses redact the Wi-Fi password and password hash. Sending
 
 Returns firmware version, authoritative power state, sensed state, output activity, Wi-Fi status, Zigbee status, OTA capability, currently present BLE matcher labels, and an HP Common Slot protocol `psu_i2c` object. When PSU I²C is enabled and a complete checksum-verified sample is available, the object includes `age_ms`, `input_voltage_v`, `input_current_a`, `output_voltage_v`, `output_current_a`, `internal_temperature_f`, and `fan_speed_raw`. When communication fails, `available` is false and those values are omitted. An `error` string describes startup or sampling failures; transfer errors include the PIC address, register, write/read phase, and SDA/SCL GPIO levels. It clears after a complete valid sample.
 
-When PSU I²C is enabled, `psu_i2c.identity` reports the paired EEPROM address, independent `available`/`error` state, and any checksum-verified FRU `manufacturer`, `product_name`, `part_number`, `revision`, `serial_number`, `board_part_number`, and `rated_capacity_w`. Empty or unsupported fields are omitted. Identification is retried about once a minute; its failure does not hide valid PIC telemetry. The EEPROM is read only.
+When PSU I²C is enabled, `psu_i2c.identity` reports the last EEPROM address tried or validated, independent `available`/`error` state, and any checksum-verified FRU `manufacturer`, `product_name`, `part_number`, `revision`, `serial_number`, `board_part_number`, and `rated_capacity_w`. The firmware probes `0x50`–`0x57` and accepts the first address containing a valid FRU; the EEPROM need not be at PIC address minus eight. Empty or unsupported fields are omitted. Identification is retried about once a minute; its failure does not hide valid PIC telemetry. The EEPROM is read only.
+
+### `GET /api/v1/psu/data`
+
+Returns cached raw PSU data without starting an I²C transfer. `pic_read` indicates whether a complete PIC sample has ever succeeded, and `pic_available` says whether the latest poll is valid. When `pic_read` is true, `pic_registers` maps `0x08`, `0x0A`, `0x0E`, `0x10`, `0x1C`, and `0x1E` to their unscaled 16-bit readings; `pic_age_ms` measures the age of that sample. When `eeprom_read` is true, `eeprom_address`, `eeprom_age_ms`, and `eeprom_hex` provide the last complete 256-byte EEPROM read as 512 hexadecimal characters. Raw EEPROM bytes remain available even when their FRU data does not decode. The endpoint has the same authentication as the status endpoint.
 
 ### `POST /api/v1/wifi/ap/close`
 

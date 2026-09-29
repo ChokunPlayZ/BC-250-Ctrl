@@ -12,7 +12,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 - Reads the board's power LED through an optocoupler, so reported power state comes from the hardware rather than the last command sent.
 - Supports four startup methods: PS_ON only, power button only, PS_ON followed by the power button, or both at the same time.
 - Supports normal shutdown and an explicit five-second force-off action. A failed startup or shutdown enters a fault state instead of repeatedly toggling the outputs.
-- Optionally monitors PSUs using the HP Common Slot protocol, including DPS-1200/750 models, through their I²C PIC interface. The web status and REST API show input/output voltage and current, internal temperature, the fan reading, and any validated identification available from a paired EEPROM. Check the PSU-side bus voltage before connecting it to 3.3 V ESP32 GPIOs.
+- Optionally monitors PSUs using the HP Common Slot protocol, including DPS-1200/750 models, through their I²C PIC interface. The web status and REST API show input/output voltage and current, internal temperature, the fan reading, and any validated identification available from an EEPROM on the same bus. A web and serial data viewer can show cached raw PIC readings and EEPROM bytes. Check the PSU-side bus voltage before connecting it to 3.3 V ESP32 GPIOs.
 
 ### Local controls and automation
 

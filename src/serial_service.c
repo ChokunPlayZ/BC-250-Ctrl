@@ -43,7 +43,7 @@ static const char *const commands[] = {
     "help", "status", "config", "set", "save", "discard",
     "on", "off", "toggle", "force-off", "power on", "power off", "power toggle", "power force-off",
     "config get", "config set", "config save", "config discard",
-    "ble scan", "ble results", "i2c scan", "zigbee commission", "zigbee reset",
+    "ble scan", "ble results", "i2c scan", "psu data", "zigbee commission", "zigbee reset",
     "wifi ap", "admin reset", "factory reset ERASE ALL", "reboot",
     "logs on", "logs off", "terminal plain", "terminal ansi",
 };
@@ -87,6 +87,7 @@ static void print_help(void)
          "  discard                        Discard unsaved changes\n"
          "  ble scan | ble results         Discover BLE devices for 15 seconds\n"
          "  i2c scan <SDA> <SCL>            Scan I2C pins\n"
+         "  psu data                       Show cached raw PIC registers and EEPROM bytes\n"
          "  zigbee commission | reset      Join or reset the Zigbee network\n"
          "  wifi ap                        Open the setup access point\n"
          "  admin reset                    Generate and display a new admin password\n"
@@ -219,6 +220,32 @@ static void scan_i2c(const char *sda_arg, const char *scl_arg)
     }
 }
 
+static void print_psu_data(void)
+{
+    bc250_psu_i2c_data_t data = bc250_psu_i2c_service_data();
+    if (!data.enabled) { puts("PSU I2C is disabled."); return; }
+    if (data.pic_read) {
+        printf("PIC registers (last complete sample %" PRIu32 " ms ago%s):\n", data.pic_age_ms,
+               data.pic_available ? "" : "; current telemetry unavailable");
+        for (unsigned i = 0; i < BC250_HP_COMMONSLOT_REGISTER_COUNT; ++i)
+            printf("  0x%02X: 0x%04X (%u)\n", bc250_hp_commonslot_registers[i],
+                   data.pic_registers[i], data.pic_registers[i]);
+    } else puts("No complete PIC register sample yet.");
+    if (!data.eeprom_read) { puts("No complete EEPROM read yet."); return; }
+    printf("EEPROM 0x%02X (last complete read %" PRIu32 " ms ago):\n",
+           data.eeprom_address, data.eeprom_age_ms);
+    for (unsigned offset = 0; offset < BC250_HP_EEPROM_SIZE; offset += 16) {
+        printf("  %02X:", offset);
+        for (unsigned i = 0; i < 16; ++i) printf(" %02X", data.eeprom[offset + i]);
+        printf("  |");
+        for (unsigned i = 0; i < 16; ++i) {
+            uint8_t byte = data.eeprom[offset + i];
+            putchar(byte >= 0x20 && byte <= 0x7e ? byte : '.');
+        }
+        puts("|");
+    }
+}
+
 static void edit_setting(const char *key, const char *value)
 {
     if (s_edit == NULL) {
@@ -290,6 +317,7 @@ static void handle_command(char *line)
         reply_result(bc250_ble_start_learning(15000), "Scanning for 15 seconds. Then enter ble results.");
     } else if (argc == 2 && !strcmp(command, "ble") && !strcmp(argv[1], "results")) print_ble_results();
     else if (argc == 4 && !strcmp(command, "i2c") && !strcmp(argv[1], "scan")) scan_i2c(argv[2], argv[3]);
+    else if (argc == 2 && !strcmp(command, "psu") && !strcmp(argv[1], "data")) print_psu_data();
     else if (argc == 2 && !strcmp(command, "zigbee") && !strcmp(argv[1], "commission")) {
         reply_result(bc250_zigbee_commission(), "Zigbee joining request queued.");
     } else if (argc == 2 && !strcmp(command, "zigbee") && !strcmp(argv[1], "reset")) {

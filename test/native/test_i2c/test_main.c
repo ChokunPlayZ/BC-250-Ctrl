@@ -19,7 +19,9 @@ static struct mock_device mock_device;
 static struct mock_device mock_eeprom;
 static uint8_t eeprom[256];
 static unsigned eeprom_reads;
-static bool eeprom_nack, eeprom_corrupt, eeprom_timeout;
+static bool eeprom_nack, eeprom_corrupt, eeprom_timeout, eeprom_missing;
+static uint8_t pic_address = 0x5f, eeprom_address = 0x57;
+static bool pic_write_invalid_state;
 static bc250_i2c_scan_progress_t scan_progress;
 static uint16_t stuck_address;
 static unsigned creates, deletes, resets, probes, writes, reads, task_creates;
@@ -126,6 +128,12 @@ esp_err_t i2c_master_bus_rm_device(i2c_master_dev_handle_t device)
     --device->bus->devices;
     return ESP_OK;
 }
+esp_err_t i2c_master_device_change_address(i2c_master_dev_handle_t device, uint16_t address, int timeout)
+{
+    assert(device == &mock_eeprom && address >= 0x50 && address <= 0x57 && timeout == 100);
+    device->config.device_address = address;
+    return ESP_OK;
+}
 esp_err_t i2c_master_bus_reset(i2c_master_bus_handle_t bus)
 {
     assert(bus->alive);
@@ -148,13 +156,15 @@ esp_err_t i2c_master_probe(i2c_master_bus_handle_t bus, uint16_t address, int ti
     if (stuck_address && address == stuck_address) { scl_low = true; return ESP_ERR_TIMEOUT; }
     if (permanent_timeout) { now_us += 100000; return ESP_ERR_TIMEOUT; }
     if (probe_timeouts) { --probe_timeouts; now_us += 100000; return ESP_ERR_TIMEOUT; }
-    return address == 0x57 || address == 0x5f ? ESP_OK : ESP_ERR_NOT_FOUND;
+    return (address == eeprom_address && !eeprom_missing) || address == pic_address ?
+           ESP_OK : ESP_ERR_NOT_FOUND;
 }
 esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t *data, size_t size, int timeout)
 {
     assert(device->bus->alive && size == 2 && timeout == 100);
     assert((uint8_t)((device->config.device_address << 1) + data[0] + data[1]) == 0);
     ++writes;
+    if (pic_write_invalid_state) return ESP_ERR_INVALID_STATE;
     if (drop_clock_on_write) { scl_low = true; return ESP_ERR_TIMEOUT; }
     if (nack) return ESP_ERR_INVALID_RESPONSE;
     if (permanent_timeout) return ESP_ERR_TIMEOUT;
@@ -166,7 +176,7 @@ esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t *dat
 esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t device, const uint8_t *write_data,
                                      size_t write_size, uint8_t *read_data, size_t read_size, int timeout)
 {
-    assert(device == &mock_eeprom && device->config.device_address == 0x57);
+    assert(device == &mock_eeprom && device->config.device_address == eeprom_address);
     assert(write_size == 1 && read_size == 32 && timeout == 100);
     assert(!waiting_reply && write_data[0] <= 224 && write_data[0] % 32 == 0);
     ++eeprom_reads;
@@ -332,14 +342,42 @@ int main(int argc, char **argv)
         else if (!strcmp(scenario, "psu_identity_nack")) eeprom_nack = true;
         else if (!strcmp(scenario, "psu_identity_crc")) eeprom_corrupt = true;
         else if (!strcmp(scenario, "psu_identity_timeout")) eeprom_timeout = true;
-        else assert(!strcmp(scenario, "psu") || !strcmp(scenario, "psu_restored") || !strcmp(scenario, "psu_identity_cache"));
+        else if (!strcmp(scenario, "psu_identity_missing")) eeprom_missing = true;
+        else if (!strcmp(scenario, "psu_mismatched_addresses")) {
+            pic_address = 0x58;
+            c.psu_i2c.address = pic_address;
+            pic_write_invalid_state = true;
+        }
+        else assert(!strcmp(scenario, "psu") || !strcmp(scenario, "psu_restored") ||
+                    !strcmp(scenario, "psu_identity_cache") || !strcmp(scenario, "psu_last_good"));
         if (!strcmp(scenario, "psu_restored")) corrupt = true;
         assert(bc250_psu_i2c_service_start(&c) == ESP_OK);
         assert(bc250_psu_i2c_service_start(&c) == ESP_ERR_INVALID_STATE && task_creates == 1);
         poll(!strcmp(scenario, "psu_identity_cache") ? 2 : 1);
         bc250_psu_i2c_status_t status = bc250_psu_i2c_service_status();
-        if (corrupt || nack || permanent_timeout || drop_clock_on_write) {
-            assert(status.enabled && !status.available && strstr(status.error, "0x5F") && strstr(status.error, "register 0x08"));
+        bc250_psu_i2c_data_t data = bc250_psu_i2c_service_data();
+        assert(data.enabled && data.pic_read == status.available);
+        assert(data.pic_available == status.available);
+        assert(data.eeprom_read == !(permanent_timeout || drop_clock_on_write ||
+                                     eeprom_nack || eeprom_timeout || eeprom_missing));
+        if (data.eeprom_read) {
+            assert(data.eeprom_address == eeprom_address && data.eeprom[0] == eeprom[0]);
+            assert(data.eeprom_age_ms >= 2000 && data.eeprom_age_ms < 10000);
+        }
+        if (data.pic_read) {
+            assert(data.pic_registers[0] == 230 * 32 && data.pic_registers[2] == 12 * 256);
+            assert(data.pic_age_ms >= 2000 && data.pic_age_ms < 10000);
+        }
+        if (corrupt || nack || permanent_timeout || drop_clock_on_write || pic_write_invalid_state) {
+            assert(status.enabled && !status.available &&
+                   strstr(status.error, pic_write_invalid_state ? "0x58" : "0x5F") &&
+                   strstr(status.error, "register 0x08"));
+            if (pic_write_invalid_state) {
+                assert(strstr(status.error, "device may NACK the command") &&
+                       status.identity.available && status.identity.eeprom_address == 0x57 &&
+                       !strcmp(status.identity.data.manufacturer, "DELTA") &&
+                       writes == 1 && reads == 0 && eeprom_reads == 8);
+            }
             if (corrupt) assert(strstr(status.error, "checksum") && resets == 0 && writes == 1 && reads == 1);
             if (nack) assert(strstr(status.error, "PIC address") && resets == 0 && writes == 1 && reads == 0);
             if (permanent_timeout) {
@@ -364,16 +402,29 @@ int main(int argc, char **argv)
             unsigned successful = !strcmp(scenario, "psu_identity_cache") ? 12 : 6;
             assert(reads == successful + (!strcmp(scenario, "psu_read_recovery") ? 1U : 0U));
             assert(writes == successful + (strstr(scenario, "_recovery") ? 1U : 0U));
-            if (eeprom_nack || eeprom_corrupt || eeprom_timeout) {
+            if (eeprom_nack || eeprom_corrupt || eeprom_timeout || eeprom_missing) {
                 assert(!status.identity.available && status.identity.error[0] && !status.error[0]);
                 if (eeprom_timeout) assert(eeprom_reads == 2 && resets == 1);
+                if (eeprom_missing) assert(eeprom_reads == 0 &&
+                                           strstr(status.identity.error, "No FRU EEPROM responded"));
             } else {
                 assert(status.identity.available && !strcmp(status.identity.data.manufacturer, "DELTA"));
                 assert(status.identity.data.rated_capacity_w == 1200 && eeprom_reads == 8);
             }
         }
         assert(scan(1, 2, addresses, sizeof(addresses), &count, error) == (permanent_timeout ? ESP_ERR_TIMEOUT : ESP_OK));
+        if (pic_write_invalid_state)
+            assert(count == 2 && addresses[0] == 0x57 && addresses[1] == 0x58);
         if (permanent_timeout) assert(scan_progress.blocked_before_scan && scan_progress.scanned_addresses == 0 && probes == 0);
+        if (!strcmp(scenario, "psu_last_good")) {
+            nack = true;
+            poll(1);
+            status = bc250_psu_i2c_service_status();
+            data = bc250_psu_i2c_service_data();
+            assert(!status.available && !data.pic_available && data.pic_read &&
+                   data.pic_registers[0] == 230 * 32);
+            assert(data.eeprom_read && data.eeprom_address == 0x57);
+        }
     }
     printf("I2C scenario %s passed\n", scenario);
     return 0;

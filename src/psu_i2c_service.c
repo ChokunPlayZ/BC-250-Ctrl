@@ -17,14 +17,20 @@ static const char *TAG = "psu_i2c";
 static bc250_psu_i2c_config_t s_config;
 static i2c_master_dev_handle_t s_device;
 static i2c_master_dev_handle_t s_eeprom_device;
+static uint8_t s_eeprom_address;
 static bc250_psu_i2c_status_t s_status;
+static bc250_psu_i2c_data_t s_data;
 static int64_t s_sample_us;
+static int64_t s_eeprom_sample_us;
 static bool s_started;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static void read_identity(void)
 {
-    bc250_psu_i2c_identity_status_t identity = {.eeprom_address = (uint8_t)(s_config.address - 8)};
+    bc250_psu_i2c_identity_status_t identity = {.eeprom_address = s_eeprom_address};
+    uint8_t eeprom[BC250_HP_EEPROM_SIZE];
+    bool eeprom_captured = false;
+    uint8_t captured_address = 0;
     esp_err_t err = ESP_OK;
     if (s_eeprom_device == NULL)
         err = bc250_i2c_service_add_device(identity.eeprom_address, 100000, &s_eeprom_device);
@@ -35,33 +41,68 @@ static void read_identity(void)
                                              "EEPROM read skipped (clock held low)",
                                              identity.error, sizeof(identity.error));
         } else {
-            uint8_t eeprom[BC250_HP_EEPROM_SIZE];
-            for (unsigned attempt = 0; attempt < 2; ++attempt) {
-                for (unsigned offset = 0; offset < sizeof(eeprom); offset += 32) {
-                    uint8_t pointer = (uint8_t)offset;
-                    // A one-byte EEPROM address selects the read pointer; no EEPROM contents are written.
-                    err = i2c_master_transmit_receive(s_eeprom_device, &pointer, 1, eeprom + offset, 32, 100);
-                    if (err != ESP_OK) break;
+            bool responded = false;
+            // Address-select contacts need not put the PIC and EEPROM at paired addresses.
+            // Try the last validated EEPROM first, then the other EEPROM-range addresses.
+            for (unsigned index = 0; index <= 8 && !identity.available; ++index) {
+                uint8_t address = index == 0 ? s_eeprom_address : (uint8_t)(0x58 - index);
+                if (address == s_eeprom_address && index != 0) continue;
+                if (!bc250_i2c_service_clock_high()) break;
+                err = i2c_master_device_change_address(s_eeprom_device, address, 100);
+                if (err != ESP_OK) break;
+                err = bc250_i2c_service_probe_locked(address);
+                if (err == ESP_ERR_NOT_FOUND) continue;
+                if (err != ESP_OK) {
+                    bc250_i2c_service_describe_error(err, address, "EEPROM probe",
+                                                     identity.error, sizeof(identity.error));
+                    if (!bc250_i2c_service_clock_high()) break;
+                    if (err == ESP_ERR_TIMEOUT && bc250_i2c_service_recover() != ESP_OK) break;
+                    continue;
                 }
-                if (err == ESP_OK) break;
-                bc250_i2c_service_describe_error(err, identity.eeprom_address, "EEPROM read",
-                                                 identity.error, sizeof(identity.error));
-                if (err != ESP_ERR_TIMEOUT || attempt != 0 || !bc250_i2c_service_clock_high() ||
-                    bc250_i2c_service_recover() != ESP_OK) break;
+                responded = true;
+                identity.eeprom_address = address;
+                for (unsigned attempt = 0; attempt < 2; ++attempt) {
+                    for (unsigned offset = 0; offset < sizeof(eeprom); offset += 32) {
+                        uint8_t pointer = (uint8_t)offset;
+                        // Select the read pointer only; never write EEPROM contents.
+                        err = i2c_master_transmit_receive(s_eeprom_device, &pointer, 1,
+                                                          eeprom + offset, 32, 100);
+                        if (err != ESP_OK) break;
+                    }
+                    if (err == ESP_OK) break;
+                    bc250_i2c_service_describe_error(err, address, "EEPROM read",
+                                                     identity.error, sizeof(identity.error));
+                    if (err != ESP_ERR_TIMEOUT || attempt != 0 || !bc250_i2c_service_clock_high() ||
+                        bc250_i2c_service_recover() != ESP_OK) break;
+                }
+                if (err == ESP_OK) {
+                    eeprom_captured = true;
+                    captured_address = address;
+                    identity.available = bc250_hp_commonslot_decode_identity(eeprom, sizeof(eeprom), &identity.data);
+                    if (identity.available) {
+                        s_eeprom_address = address;
+                        identity.error[0] = '\0';
+                    } else {
+                        snprintf(identity.error, sizeof(identity.error),
+                                 "EEPROM at 0x%02X has unsupported or corrupt FRU identification", address);
+                    }
+                }
+                if (!bc250_i2c_service_clock_high()) break;
             }
-            if (err == ESP_OK) {
-                identity.error[0] = '\0';
-                identity.available = bc250_hp_commonslot_decode_identity(eeprom, sizeof(eeprom), &identity.data);
-                if (!identity.available) snprintf(identity.error, sizeof(identity.error),
-                                                   "EEPROM at 0x%02X has unsupported or corrupt FRU identification",
-                                                   identity.eeprom_address);
-            }
+            if (!identity.available && !responded && !identity.error[0])
+                snprintf(identity.error, sizeof(identity.error), "No FRU EEPROM responded at 0x50-0x57");
         }
         bc250_i2c_service_unlock();
     } else {
         snprintf(identity.error, sizeof(identity.error), "PSU identification unavailable: %s", esp_err_to_name(err));
     }
     portENTER_CRITICAL(&s_lock);
+    if (eeprom_captured) {
+        s_data.eeprom_read = true;
+        s_data.eeprom_address = captured_address;
+        memcpy(s_data.eeprom, eeprom, sizeof(eeprom));
+        s_eeprom_sample_us = esp_timer_get_time();
+    }
     s_status.identity = identity;
     portEXIT_CRITICAL(&s_lock);
 }
@@ -130,6 +171,8 @@ static void psu_task(void *arg)
         s_status.available = err == ESP_OK;
         memcpy(s_status.error, error, sizeof(s_status.error));
         if (err == ESP_OK) {
+            s_data.pic_read = true;
+            memcpy(s_data.pic_registers, raw, sizeof(raw));
             s_status.input_voltage_v = bc250_hp_commonslot_scale(0, raw[0]);
             s_status.input_current_a = bc250_hp_commonslot_scale(1, raw[1]);
             s_status.output_voltage_v = bc250_hp_commonslot_scale(2, raw[2]);
@@ -163,11 +206,15 @@ esp_err_t bc250_psu_i2c_service_start(const bc250_config_t *config)
     if (config == NULL) return ESP_ERR_INVALID_ARG;
     if (s_started) return ESP_ERR_INVALID_STATE;
     s_config = config->psu_i2c;
+    s_eeprom_address = (uint8_t)(s_config.address - 8);
     portENTER_CRITICAL(&s_lock);
     memset(&s_status, 0, sizeof(s_status));
+    memset(&s_data, 0, sizeof(s_data));
     s_status.enabled = s_config.enabled;
-    s_status.identity.eeprom_address = (uint8_t)(s_config.address - 8);
+    s_data.enabled = s_config.enabled;
+    s_status.identity.eeprom_address = s_eeprom_address;
     s_sample_us = 0;
+    s_eeprom_sample_us = 0;
     portEXIT_CRITICAL(&s_lock);
     if (!s_config.enabled) return ESP_OK;
     ESP_LOGI(TAG, "Starting PSU telemetry: SDA=%d; SCL=%d; address=0x%02x; poll=%" PRIu32 " ms",
@@ -214,4 +261,18 @@ bc250_psu_i2c_status_t bc250_psu_i2c_service_status(void)
     portEXIT_CRITICAL(&s_lock);
     status.age_ms = sampled > 0 ? (uint32_t)((esp_timer_get_time() - sampled) / 1000) : 0;
     return status;
+}
+
+bc250_psu_i2c_data_t bc250_psu_i2c_service_data(void)
+{
+    portENTER_CRITICAL(&s_lock);
+    bc250_psu_i2c_data_t data = s_data;
+    data.pic_available = s_status.available;
+    int64_t pic_sample = s_sample_us;
+    int64_t eeprom_sample = s_eeprom_sample_us;
+    portEXIT_CRITICAL(&s_lock);
+    int64_t now = esp_timer_get_time();
+    data.pic_age_ms = pic_sample > 0 ? (uint32_t)((now - pic_sample) / 1000) : 0;
+    data.eeprom_age_ms = eeprom_sample > 0 ? (uint32_t)((now - eeprom_sample) / 1000) : 0;
+    return data;
 }

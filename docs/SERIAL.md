@@ -37,6 +37,7 @@ Settings saved. Rebooting...
 | `ble scan` | Start a 15-second discovery scan |
 | `ble results` | Show discovered addresses, names, address types, and RSSI |
 | `i2c scan <SDA> <SCL>` | Scan validated I²C pins; show addresses, progress, and partial results after a fault |
+| `psu data` | View cached raw PIC registers and a hex/ASCII EEPROM dump, with sample ages |
 | `zigbee commission`, `zigbee reset` | Start joining or clear only Zigbee network state |
 | `wifi ap` | Open the setup AP in any radio profile; closes after five minutes with no connected clients |
 | `admin reset` | Generate, save, and display a new admin password once |

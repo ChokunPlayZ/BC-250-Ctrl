@@ -1,6 +1,7 @@
 #include "web_server.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "ble_presence.h"
@@ -74,6 +75,48 @@ static esp_err_t status_handler(httpd_req_t *request)
     httpd_resp_set_type(request, "application/json");
     esp_err_t err = httpd_resp_sendstr(request, json);
     cJSON_free(json);
+    return err;
+}
+
+static esp_err_t psu_data_handler(httpd_req_t *request)
+{
+    if (!require_auth(request)) return ESP_OK;
+    bc250_psu_i2c_data_t data = bc250_psu_i2c_service_data();
+    cJSON *response = cJSON_CreateObject();
+    if (response == NULL) return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+    cJSON_AddBoolToObject(response, "enabled", data.enabled);
+    cJSON_AddBoolToObject(response, "pic_read", data.pic_read);
+    cJSON_AddBoolToObject(response, "pic_available", data.pic_available);
+    cJSON_AddBoolToObject(response, "eeprom_read", data.eeprom_read);
+    if (data.pic_read) {
+        cJSON_AddNumberToObject(response, "pic_age_ms", data.pic_age_ms);
+        cJSON *registers = cJSON_AddObjectToObject(response, "pic_registers");
+        if (registers != NULL) {
+            for (unsigned i = 0; i < BC250_HP_COMMONSLOT_REGISTER_COUNT; ++i) {
+                char name[5];
+                snprintf(name, sizeof(name), "0x%02X", bc250_hp_commonslot_registers[i]);
+                cJSON_AddNumberToObject(registers, name, data.pic_registers[i]);
+            }
+        }
+    }
+    if (data.eeprom_read) {
+        static const char digits[] = "0123456789ABCDEF";
+        char hex[BC250_HP_EEPROM_SIZE * 2 + 1];
+        for (unsigned i = 0; i < BC250_HP_EEPROM_SIZE; ++i) {
+            hex[i * 2] = digits[data.eeprom[i] >> 4];
+            hex[i * 2 + 1] = digits[data.eeprom[i] & 15];
+        }
+        hex[sizeof(hex) - 1] = '\0';
+        cJSON_AddNumberToObject(response, "eeprom_address", data.eeprom_address);
+        cJSON_AddNumberToObject(response, "eeprom_age_ms", data.eeprom_age_ms);
+        cJSON_AddStringToObject(response, "eeprom_hex", hex);
+    }
+    char *output = cJSON_PrintUnformatted(response);
+    cJSON_Delete(response);
+    if (output == NULL) return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+    httpd_resp_set_type(request, "application/json");
+    esp_err_t err = httpd_resp_sendstr(request, output);
+    cJSON_free(output);
     return err;
 }
 
@@ -430,13 +473,14 @@ esp_err_t bc250_web_server_start(void)
 {
     if (s_server != NULL) return ESP_OK;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 17;
+    config.max_uri_handlers = 18;
     config.stack_size = 8192;
     config.lru_purge_enable = true;
     ESP_RETURN_ON_ERROR(httpd_start(&s_server, &config), TAG, "HTTP server start");
     const httpd_uri_t handlers[] = {
         {.uri = "/", .method = HTTP_GET, .handler = root_handler},
         {.uri = "/api/v1/status", .method = HTTP_GET, .handler = status_handler},
+        {.uri = "/api/v1/psu/data", .method = HTTP_GET, .handler = psu_data_handler},
         {.uri = "/api/v1/wifi/ap/close", .method = HTTP_POST, .handler = close_ap_handler},
         {.uri = "/api/v1/power", .method = HTTP_POST, .handler = power_handler},
         {.uri = "/api/v1/config", .method = HTTP_GET, .handler = config_get_handler},

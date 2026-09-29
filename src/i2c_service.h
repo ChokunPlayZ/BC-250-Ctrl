@@ -30,6 +30,7 @@ void bc250_i2c_service_unlock(void);
 // Caller must hold the bus lock for recovery and GPIO diagnostics.
 esp_err_t bc250_i2c_service_recover(void);
 bool bc250_i2c_service_clock_high(void);
+esp_err_t bc250_i2c_service_probe_locked(uint8_t address);
 void bc250_i2c_service_describe_error(esp_err_t err, uint8_t address, const char *operation,
                                       char *error, size_t error_size);
 

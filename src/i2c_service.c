@@ -112,6 +112,11 @@ bool bc250_i2c_service_clock_high(void)
     return s_bus != NULL && gpio_get_level(s_scl_gpio) != 0;
 }
 
+esp_err_t bc250_i2c_service_probe_locked(uint8_t address)
+{
+    return s_bus == NULL ? ESP_ERR_INVALID_STATE : i2c_master_probe(s_bus, address, 100);
+}
+
 static void describe_error(esp_err_t err, int sda_gpio, int scl_gpio, uint8_t address,
                            const char *operation, char *error, size_t error_size)
 {
@@ -120,6 +125,8 @@ static void describe_error(esp_err_t err, int sda_gpio, int scl_gpio, uint8_t ad
                          err == ESP_ERR_INVALID_CRC ? "reply checksum failed" : esp_err_to_name(err);
     const char *hint = err == ESP_ERR_TIMEOUT ? "; check ground, wiring and 3.3 V pull-ups" :
                        err == ESP_ERR_INVALID_CRC ? "; check signal quality and PSU compatibility" :
+                       err == ESP_ERR_INVALID_STATE ?
+                       "; transaction incomplete (device may NACK the command)" :
                        err == ESP_ERR_INVALID_RESPONSE || err == ESP_ERR_NOT_FOUND ?
                        "; check PIC address and PSU power" : "";
     snprintf(error, error_size, "I2C %s at 0x%02X %s (SDA GPIO %d=%s, SCL GPIO %d=%s)%s",
