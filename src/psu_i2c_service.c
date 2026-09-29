@@ -30,25 +30,32 @@ static void read_identity(void)
         err = bc250_i2c_service_add_device(identity.eeprom_address, 100000, &s_eeprom_device);
     if (err == ESP_OK) err = bc250_i2c_service_lock();
     if (err == ESP_OK) {
-        uint8_t eeprom[BC250_HP_EEPROM_SIZE];
-        for (unsigned attempt = 0; attempt < 2; ++attempt) {
-            for (unsigned offset = 0; offset < sizeof(eeprom); offset += 32) {
-                uint8_t pointer = (uint8_t)offset;
-                // A one-byte EEPROM address selects the read pointer; no EEPROM contents are written.
-                err = i2c_master_transmit_receive(s_eeprom_device, &pointer, 1, eeprom + offset, 32, 100);
-                if (err != ESP_OK) break;
-            }
-            if (err == ESP_OK) break;
-            bc250_i2c_service_describe_error(err, identity.eeprom_address, "EEPROM read",
+        if (!bc250_i2c_service_clock_high()) {
+            bc250_i2c_service_describe_error(ESP_ERR_TIMEOUT, identity.eeprom_address,
+                                             "EEPROM read skipped (clock held low)",
                                              identity.error, sizeof(identity.error));
-            if (err != ESP_ERR_TIMEOUT || attempt != 0 || bc250_i2c_service_recover() != ESP_OK) break;
-        }
-        if (err == ESP_OK) {
-            identity.error[0] = '\0';
-            identity.available = bc250_hp_commonslot_decode_identity(eeprom, sizeof(eeprom), &identity.data);
-            if (!identity.available) snprintf(identity.error, sizeof(identity.error),
-                                               "EEPROM at 0x%02X has unsupported or corrupt FRU identification",
-                                               identity.eeprom_address);
+        } else {
+            uint8_t eeprom[BC250_HP_EEPROM_SIZE];
+            for (unsigned attempt = 0; attempt < 2; ++attempt) {
+                for (unsigned offset = 0; offset < sizeof(eeprom); offset += 32) {
+                    uint8_t pointer = (uint8_t)offset;
+                    // A one-byte EEPROM address selects the read pointer; no EEPROM contents are written.
+                    err = i2c_master_transmit_receive(s_eeprom_device, &pointer, 1, eeprom + offset, 32, 100);
+                    if (err != ESP_OK) break;
+                }
+                if (err == ESP_OK) break;
+                bc250_i2c_service_describe_error(err, identity.eeprom_address, "EEPROM read",
+                                                 identity.error, sizeof(identity.error));
+                if (err != ESP_ERR_TIMEOUT || attempt != 0 || !bc250_i2c_service_clock_high() ||
+                    bc250_i2c_service_recover() != ESP_OK) break;
+            }
+            if (err == ESP_OK) {
+                identity.error[0] = '\0';
+                identity.available = bc250_hp_commonslot_decode_identity(eeprom, sizeof(eeprom), &identity.data);
+                if (!identity.available) snprintf(identity.error, sizeof(identity.error),
+                                                   "EEPROM at 0x%02X has unsupported or corrupt FRU identification",
+                                                   identity.eeprom_address);
+            }
         }
         bc250_i2c_service_unlock();
     } else {
@@ -66,6 +73,14 @@ static esp_err_t read_register(uint8_t reg, uint16_t *raw, char error[BC250_I2C_
         snprintf(error, BC250_I2C_ERROR_SIZE, "I2C bus busy or unavailable; retrying on next poll (%s)",
                  esp_err_to_name(err));
         return err;
+    }
+    if (!bc250_i2c_service_clock_high()) {
+        char operation[48];
+        snprintf(operation, sizeof(operation), "write register 0x%02X skipped (clock held low)", reg);
+        bc250_i2c_service_describe_error(ESP_ERR_TIMEOUT, s_config.address,
+                                         operation, error, BC250_I2C_ERROR_SIZE);
+        bc250_i2c_service_unlock();
+        return ESP_ERR_TIMEOUT;
     }
     uint8_t command[2];
     uint8_t reply[3];
@@ -89,7 +104,8 @@ static esp_err_t read_register(uint8_t reg, uint16_t *raw, char error[BC250_I2C_
         char operation[32];
         snprintf(operation, sizeof(operation), "%s register 0x%02X", phase, reg);
         bc250_i2c_service_describe_error(err, s_config.address, operation, error, BC250_I2C_ERROR_SIZE);
-        if (err != ESP_ERR_TIMEOUT || attempt != 0 || bc250_i2c_service_recover() != ESP_OK) break;
+        if (err != ESP_ERR_TIMEOUT || attempt != 0 || !bc250_i2c_service_clock_high() ||
+            bc250_i2c_service_recover() != ESP_OK) break;
         // Restart the whole command/read pair after clearing an interrupted transfer.
     }
     bc250_i2c_service_unlock();

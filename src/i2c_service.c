@@ -107,6 +107,11 @@ esp_err_t bc250_i2c_service_recover(void)
     return s_bus == NULL ? ESP_ERR_INVALID_STATE : i2c_master_bus_reset(s_bus);
 }
 
+bool bc250_i2c_service_clock_high(void)
+{
+    return s_bus != NULL && gpio_get_level(s_scl_gpio) != 0;
+}
+
 static void describe_error(esp_err_t err, int sda_gpio, int scl_gpio, uint8_t address,
                            const char *operation, char *error, size_t error_size)
 {
@@ -154,6 +159,16 @@ esp_err_t bc250_i2c_service_scan(int sda_gpio, int scl_gpio, uint8_t *addresses,
         return result;
     }
 
+    if (!gpio_get_level(scl_gpio)) {
+        result = ESP_ERR_TIMEOUT;
+        scanned.blocked_before_scan = true;
+        if (error != NULL && error_size > 0)
+            snprintf(error, error_size,
+                     "I2C scan stopped before first probe (clock held low: SDA GPIO %d=%s, SCL GPIO %d=low); check PSU clock wiring and pull-up",
+                     sda_gpio, gpio_get_level(sda_gpio) ? "high" : "low", scl_gpio);
+        goto cleanup;
+    }
+
     int64_t deadline = esp_timer_get_time() + 3000000;
     for (uint8_t address = 0x08; address <= 0x77; ++address) {
         if (esp_timer_get_time() >= deadline) {
@@ -165,10 +180,13 @@ esp_err_t bc250_i2c_service_scan(int sda_gpio, int scl_gpio, uint8_t *addresses,
         esp_err_t err = i2c_master_probe(bus, address, 100);
         bool stop = false;
         if (err == ESP_ERR_TIMEOUT) {
-            // A scan may follow an interrupted transfer. Clear the bus and retry once.
-            esp_err_t recovery = i2c_master_bus_reset(bus);
             const char *operation = "scan";
-            if (recovery != ESP_OK) {
+            // A held clock cannot be cleared by driving pulses from the ESP32.
+            // Avoid needlessly reconfiguring both GPIOs on that fault.
+            if (!gpio_get_level(scl_gpio)) {
+                operation = "scan stopped (clock held low)";
+                stop = true;
+            } else if (i2c_master_bus_reset(bus) != ESP_OK) {
                 operation = "scan stopped (recovery failed)";
                 stop = true;
             } else if (!gpio_get_level(scl_gpio)) {
@@ -207,6 +225,7 @@ esp_err_t bc250_i2c_service_scan(int sda_gpio, int scl_gpio, uint8_t *addresses,
             if (stop) break;
         }
     }
+cleanup:
     if (temporary) {
         esp_err_t cleanup = i2c_del_master_bus(bus);
         if (result == ESP_OK) result = cleanup;

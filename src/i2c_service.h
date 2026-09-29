@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -12,6 +13,7 @@
 typedef struct {
     size_t scanned_addresses;
     size_t timeout_count;
+    bool blocked_before_scan;
 } bc250_i2c_scan_progress_t;
 
 // One shared bus for I2C clients. Repeated starts must use the same pins.
@@ -27,6 +29,7 @@ void bc250_i2c_service_unlock(void);
 
 // Caller must hold the bus lock for recovery and GPIO diagnostics.
 esp_err_t bc250_i2c_service_recover(void);
+bool bc250_i2c_service_clock_high(void);
 void bc250_i2c_service_describe_error(esp_err_t err, uint8_t address, const char *operation,
                                       char *error, size_t error_size);
 

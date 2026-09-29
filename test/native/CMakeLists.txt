@@ -62,9 +62,9 @@ target_compile_options(bc250_i2c_tests PRIVATE -Wall -Wextra -Werror)
 target_compile_definitions(bc250_i2c_tests PRIVATE CONFIG_IDF_TARGET_ESP32C5=1)
 target_include_directories(bc250_i2c_tests PRIVATE test_i2c/include support ../../src)
 target_link_libraries(bc250_i2c_tests PRIVATE Threads::Threads)
-foreach(scenario IN ITEMS scan scan_recovery scan_stuck scan_isolated_timeout scan_partial scan_budget reset_failure capacity shared busy invalid
+foreach(scenario IN ITEMS scan scan_clock_low scan_recovery scan_stuck scan_isolated_timeout scan_partial scan_budget reset_failure capacity shared busy invalid
                           create_failure concurrent_start task_failure psu psu_write_recovery
-                          psu_read_recovery psu_stuck psu_nack psu_crc psu_restored
+                          psu_read_recovery psu_stuck psu_clock_drops psu_nack psu_crc psu_restored
                           psu_identity_nack psu_identity_crc psu_identity_timeout psu_identity_cache)
     add_test(NAME bc250_i2c_${scenario} COMMAND bc250_i2c_tests ${scenario})
 endforeach()

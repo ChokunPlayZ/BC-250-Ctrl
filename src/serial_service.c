@@ -207,7 +207,7 @@ static void scan_i2c(const char *sda_arg, const char *scl_arg)
     if (err != ESP_OK) {
         reply_error(err == ESP_ERR_INVALID_STATE ? "Active I2C bus uses different GPIOs" :
                     error[0] ? error : esp_err_to_name(err));
-        if (progress.scanned_addresses == 0) return;
+        if (progress.scanned_addresses == 0 && !progress.blocked_before_scan) return;
     }
     printf("Scanned %zu of %u addresses; %zu timed out.\n", progress.scanned_addresses,
            BC250_I2C_MAX_SCAN_ADDRESSES, progress.timeout_count);

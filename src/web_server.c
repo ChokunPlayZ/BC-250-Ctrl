@@ -250,7 +250,7 @@ static esp_err_t i2c_scan_handler(httpd_req_t *request)
         httpd_resp_set_status(request, "409 Conflict");
         return httpd_resp_sendstr(request, "The active I2C bus uses different GPIOs or is unavailable");
     }
-    if (err != ESP_OK && progress.scanned_addresses == 0) {
+    if (err != ESP_OK && progress.scanned_addresses == 0 && !progress.blocked_before_scan) {
         httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
                             error[0] ? error : esp_err_to_name(err));
         return ESP_FAIL;

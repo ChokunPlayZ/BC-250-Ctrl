@@ -24,7 +24,7 @@ static bc250_i2c_scan_progress_t scan_progress;
 static uint16_t stuck_address;
 static unsigned creates, deletes, resets, probes, writes, reads, task_creates;
 static esp_err_t create_error, reset_error;
-static bool mutex_busy, task_failure, sda_low, scl_low, corrupt, nack, permanent_timeout;
+static bool mutex_busy, task_failure, sda_low, scl_low, corrupt, nack, permanent_timeout, drop_clock_on_write;
 static unsigned probe_timeouts, write_timeouts, read_timeouts;
 static uint8_t reg;
 static bool waiting_reply;
@@ -155,6 +155,7 @@ esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t *dat
     assert(device->bus->alive && size == 2 && timeout == 100);
     assert((uint8_t)((device->config.device_address << 1) + data[0] + data[1]) == 0);
     ++writes;
+    if (drop_clock_on_write) { scl_low = true; return ESP_ERR_TIMEOUT; }
     if (nack) return ESP_ERR_INVALID_RESPONSE;
     if (permanent_timeout) return ESP_ERR_TIMEOUT;
     if (write_timeouts) { --write_timeouts; return ESP_ERR_TIMEOUT; }
@@ -228,11 +229,13 @@ int main(int argc, char **argv)
     uint8_t addresses[112]; size_t count = 99; char error[BC250_I2C_ERROR_SIZE];
     bc250_config_t c = config();
     hp_fru_fixture(eeprom);
-    if (!strcmp(scenario, "scan") || !strcmp(scenario, "scan_recovery") ||
+    if (!strcmp(scenario, "scan") || !strcmp(scenario, "scan_clock_low") ||
+        !strcmp(scenario, "scan_recovery") ||
         !strcmp(scenario, "scan_stuck") || !strcmp(scenario, "scan_isolated_timeout") ||
         !strcmp(scenario, "scan_partial") || !strcmp(scenario, "scan_budget") ||
         !strcmp(scenario, "reset_failure") || !strcmp(scenario, "capacity")) {
         if (!strcmp(scenario, "scan_recovery")) probe_timeouts = 1;
+        if (!strcmp(scenario, "scan_clock_low")) scl_low = true;
         if (!strcmp(scenario, "scan_stuck") || !strcmp(scenario, "reset_failure")) {
             permanent_timeout = true; sda_low = true;
         }
@@ -242,9 +245,13 @@ int main(int argc, char **argv)
         if (!strcmp(scenario, "scan_budget")) permanent_timeout = true;
         size_t capacity = !strcmp(scenario, "capacity") ? 1 : sizeof(addresses);
         esp_err_t err = scan(1, 2, addresses, capacity, &count, error);
-        if (!strcmp(scenario, "scan_partial")) {
+        if (!strcmp(scenario, "scan_clock_low")) {
+            assert(err == ESP_ERR_TIMEOUT && count == 0 && probes == 0 && resets == 0);
+            assert(scan_progress.blocked_before_scan && scan_progress.scanned_addresses == 0);
+            assert(strstr(error, "before first probe (clock held low"));
+        } else if (!strcmp(scenario, "scan_partial")) {
             assert(err == ESP_ERR_TIMEOUT && count == 2 && scan_progress.scanned_addresses == 89);
-            assert(strstr(error, "clock held low") && addresses[1] == 0x5f);
+            assert(strstr(error, "clock held low") && addresses[1] == 0x5f && resets == 0);
         } else if (!strcmp(scenario, "scan_budget")) {
             assert(err == ESP_ERR_TIMEOUT && count == 0 && scan_progress.scanned_addresses == 15);
             assert(scan_progress.timeout_count == 15 && probes == 30 && strstr(error, "time limit"));
@@ -319,6 +326,7 @@ int main(int argc, char **argv)
         if (!strcmp(scenario, "psu_write_recovery")) write_timeouts = 1;
         else if (!strcmp(scenario, "psu_read_recovery")) read_timeouts = 1;
         else if (!strcmp(scenario, "psu_stuck")) { permanent_timeout = true; scl_low = true; }
+        else if (!strcmp(scenario, "psu_clock_drops")) drop_clock_on_write = true;
         else if (!strcmp(scenario, "psu_nack")) nack = true;
         else if (!strcmp(scenario, "psu_crc")) corrupt = true;
         else if (!strcmp(scenario, "psu_identity_nack")) eeprom_nack = true;
@@ -330,13 +338,21 @@ int main(int argc, char **argv)
         assert(bc250_psu_i2c_service_start(&c) == ESP_ERR_INVALID_STATE && task_creates == 1);
         poll(!strcmp(scenario, "psu_identity_cache") ? 2 : 1);
         bc250_psu_i2c_status_t status = bc250_psu_i2c_service_status();
-        if (corrupt || nack || permanent_timeout) {
+        if (corrupt || nack || permanent_timeout || drop_clock_on_write) {
             assert(status.enabled && !status.available && strstr(status.error, "0x5F") && strstr(status.error, "register 0x08"));
             if (corrupt) assert(strstr(status.error, "checksum") && resets == 0 && writes == 1 && reads == 1);
             if (nack) assert(strstr(status.error, "PIC address") && resets == 0 && writes == 1 && reads == 0);
             if (permanent_timeout) {
-                assert(strstr(status.error, "SCL GPIO 2=low") && resets == 2 && writes == 2 && reads == 0);
-                assert(!status.identity.available && strstr(status.identity.error, "SCL GPIO 2=low"));
+                assert(strstr(status.error, "SCL GPIO 2=low") && strstr(status.error, "skipped"));
+                assert(resets == 0 && writes == 0 && reads == 0 && eeprom_reads == 0);
+                assert(!status.identity.available && strstr(status.identity.error, "clock held low"));
+            }
+            if (drop_clock_on_write) {
+                assert(strstr(status.error, "SCL GPIO 2=low") && resets == 0 && writes == 1);
+                assert(eeprom_reads == 0);
+                drop_clock_on_write = false; scl_low = false;
+                poll(1); status = bc250_psu_i2c_service_status();
+                assert(status.available && !status.error[0] && sample_count == 2);
             }
             if (!strcmp(scenario, "psu_restored")) {
                 corrupt = false; poll(1); status = bc250_psu_i2c_service_status();
@@ -357,6 +373,7 @@ int main(int argc, char **argv)
             }
         }
         assert(scan(1, 2, addresses, sizeof(addresses), &count, error) == (permanent_timeout ? ESP_ERR_TIMEOUT : ESP_OK));
+        if (permanent_timeout) assert(scan_progress.blocked_before_scan && scan_progress.scanned_addresses == 0 && probes == 0);
     }
     printf("I2C scenario %s passed\n", scenario);
     return 0;
