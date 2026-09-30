@@ -53,7 +53,7 @@ char *bc250_status_json(void)
         cJSON_AddNumberToObject(psu, "input_current_a", psu_status.input_current_a);
         cJSON_AddNumberToObject(psu, "output_voltage_v", psu_status.output_voltage_v);
         cJSON_AddNumberToObject(psu, "output_current_a", psu_status.output_current_a);
-        cJSON_AddNumberToObject(psu, "internal_temperature_f", psu_status.internal_temperature_f);
+        cJSON_AddNumberToObject(psu, "internal_temperature_c", psu_status.internal_temperature_c);
         cJSON_AddNumberToObject(psu, "fan_speed_raw", psu_status.fan_speed_raw);
     }
 #ifdef CONFIG_BC250_OTA_ENABLED

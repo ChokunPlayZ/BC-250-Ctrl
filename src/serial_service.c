@@ -142,7 +142,7 @@ static void print_status(void)
     else {
         printf("PSU input:     %.2f V, %.2f A\n", (double)psu.input_voltage_v, (double)psu.input_current_a);
         printf("PSU output:    %.2f V, %.2f A\n", (double)psu.output_voltage_v, (double)psu.output_current_a);
-        printf("PSU temp:      %.1f F\n", (double)psu.internal_temperature_f);
+        printf("PSU temp:      %.1f °C\n", (double)psu.internal_temperature_c);
         printf("PSU fan:       %u (raw)\n", psu.fan_speed_raw);
         printf("PSU sample:    %" PRIu32 " ms old\n", psu.age_ms);
     }

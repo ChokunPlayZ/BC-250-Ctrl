@@ -23,6 +23,9 @@ static void test_hp_commonslot_protocol(void)
     assert(!bc250_hp_commonslot_decode_reply(bad, &raw));
     assert(bc250_hp_commonslot_scale(0, raw) == 120.0f);
     assert(bc250_hp_commonslot_scale(2, 0x0c00) == 12.0f);
+    assert(bc250_hp_commonslot_temperature_c(32 * 32) == 0.0f);
+    float temperature_c = bc250_hp_commonslot_temperature_c(122 * 32);
+    assert(temperature_c > 49.99f && temperature_c < 50.01f);
 }
 
 static void test_start_sequence(void)

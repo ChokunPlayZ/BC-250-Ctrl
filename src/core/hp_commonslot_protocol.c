@@ -24,3 +24,8 @@ float bc250_hp_commonslot_scale(unsigned index, uint16_t raw)
     };
     return index < BC250_HP_COMMONSLOT_REGISTER_COUNT ? raw / divisors[index] : 0.0f;
 }
+
+float bc250_hp_commonslot_temperature_c(uint16_t raw)
+{
+    return (bc250_hp_commonslot_scale(4, raw) - 32.0f) * (5.0f / 9.0f);
+}

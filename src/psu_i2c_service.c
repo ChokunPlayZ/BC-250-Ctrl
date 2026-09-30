@@ -177,7 +177,7 @@ static void psu_task(void *arg)
             s_status.input_current_a = bc250_hp_commonslot_scale(1, raw[1]);
             s_status.output_voltage_v = bc250_hp_commonslot_scale(2, raw[2]);
             s_status.output_current_a = bc250_hp_commonslot_scale(3, raw[3]);
-            s_status.internal_temperature_f = bc250_hp_commonslot_scale(4, raw[4]);
+            s_status.internal_temperature_c = bc250_hp_commonslot_temperature_c(raw[4]);
             s_status.fan_speed_raw = raw[5];
             s_sample_us = esp_timer_get_time();
         }

@@ -8,7 +8,32 @@
 <style>
 :root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif;background:#10151c;color:#e8eef7;--muted:#aebed0;--line:#314255;--accent:#69bcff}
 *{box-sizing:border-box}body{max-width:860px;margin:auto;padding:20px 16px calc(160px + env(safe-area-inset-bottom))}h1,h2,h3,p{margin:0 0 12px}h1{font-size:1.5rem;line-height:1.25}h2,summary{font-size:1.1rem}h3{font-size:1rem}a{color:var(--accent)}header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}.eyebrow{font-size:.75rem;letter-spacing:.12em;color:var(--accent);font-weight:700}header h1{margin:0}.badge{font-size:.8rem;border:1px solid var(--line);border-radius:999px;padding:5px 10px;white-space:nowrap}.nav{display:flex;gap:8px;margin-bottom:16px}.nav a{flex:1;text-align:center;text-decoration:none;padding:12px;border:1px solid var(--line);border-radius:10px;color:inherit}.card{background:#18212c;border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0;scroll-margin-top:16px}details.card{padding:0}summary{cursor:pointer;min-height:56px;padding:16px 18px;font-weight:650}summary small{font-weight:400;margin-left:6px}details[open]>summary{border-bottom:1px solid var(--line)}.content{padding:18px}.section-title{margin:26px 0 6px}.intro,small,.muted{color:var(--muted)}small{font-size:.85rem}.intro{font-size:.95rem}button,input,select{font:inherit;border-radius:10px;border:1px solid #52677e;color:inherit;min-width:0;max-width:100%}button{min-height:48px;padding:11px 16px;background:#24384d;cursor:pointer;touch-action:manipulation;font-weight:600}button.primary{background:#2380c4;border-color:#2380c4;color:white}button.danger{background:#45212c;border-color:#b04a59;color:#ffb8be}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}input,select{width:100%;min-height:48px;padding:11px 12px;background:#101923}input[type=checkbox]{width:24px;height:24px;min-height:24px;flex:none;accent-color:#69bcff}input[type=file]{padding:10px;overflow:hidden}label{display:flex;flex-direction:column;gap:6px;color:var(--muted);min-width:0;font-size:.9rem}label.check{flex-direction:row;align-items:center;gap:12px;min-height:48px;color:inherit}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;min-width:0}.row>*{max-width:100%}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.power-state{font-size:2.25rem;line-height:1.2;font-weight:700;margin-bottom:8px;text-transform:capitalize}.status-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.status-grid div{min-width:0;background:#101923;padding:12px;border-radius:10px}.status-grid small,.status-grid strong{display:block}.status-grid strong{overflow-wrap:anywhere;font-size:.95rem}.more{margin-top:14px}.more summary{padding:10px 0;font-size:.9rem;min-height:44px}.more[open]>summary{border:0}.more .actions{margin-top:8px}.item{border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}.item .grid{width:100%}.item h3{width:100%;margin-bottom:4px}.item button{width:100%;margin-top:4px}.scan-result{background:#101923;padding:12px;border-radius:10px;margin:10px 0;overflow-wrap:anywhere}.scan-result button{margin-left:auto}.scan-result small{width:100%}.ok{color:#70dc91}.bad{color:#ff9ba3}.warn{color:#f5ca75}.field-feedback{display:block;font-size:.8rem;overflow-wrap:anywhere}input[aria-invalid=true],select[aria-invalid=true]{border-color:#ff7d87}.fix-count{color:#ff9ba3;font-size:.8rem}.save-dock{position:fixed;bottom:0;left:0;right:0;border-top:1px solid var(--line);background:#10151cf5;padding:12px max(16px,env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom));z-index:5}.save-inner{max-width:828px;margin:auto;display:flex;align-items:center;gap:12px}.save-info{flex:1;min-width:0;font-size:.8rem}.save-info small{display:block;margin-top:3px}.save-inner button{flex:none}#reviewbutton{margin-top:6px;min-height:32px;padding:4px 8px;font-size:.8rem}#message{position:fixed;bottom:calc(140px + env(safe-area-inset-bottom));left:16px;right:16px;max-width:828px;margin:auto;background:#243244;padding:12px 16px;border:1px solid var(--line);border-radius:12px;z-index:6;overflow-wrap:anywhere;box-shadow:0 8px 24px #0005}#apnotice{border-color:#84662f}#apnotice button{margin-top:12px}#psustatus{overflow-wrap:anywhere}pre,code{white-space:pre-wrap;overflow-wrap:anywhere} [hidden]{display:none!important}
+.psu-live{background:#101923;border:1px solid var(--line);border-radius:14px;padding:16px}
+.psu-live-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.psu-label{display:block;color:var(--muted);font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.psu-state{font-size:1.15rem;font-weight:700;line-height:1.3;margin-top:4px}
+.psu-age{color:var(--muted);font-size:.8rem;white-space:nowrap}
+.psu-detail{color:var(--muted);font-size:.9rem;margin:8px 0 0;overflow-wrap:anywhere}
+.psu-readings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.psu-reading{background:#18212c;border:1px solid var(--line);border-radius:10px;min-width:0;padding:12px}
+.psu-reading small,.psu-reading strong,.psu-reading span{display:block}
+.psu-reading strong{font-size:1.2rem;line-height:1.3;margin-top:4px;overflow-wrap:anywhere}
+.psu-reading span{color:var(--muted);font-size:.85rem;margin-top:2px}
+.psu-note{border-left:3px solid var(--accent);color:var(--muted);font-size:.9rem;margin:14px 0 0;padding:4px 0 4px 12px}
+.psu-identity{border-bottom:1px solid var(--line);padding:18px 0 16px}
+.psu-identity h3,.psu-settings h3{margin-bottom:10px}
+.psu-id-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.psu-id-grid>div{min-width:0;overflow-wrap:anywhere}
+.psu-id-grid small,.psu-id-grid strong{display:block}
+.psu-id-grid strong{font-size:.9rem;font-weight:600}
+.psu-settings{padding-top:18px}
+.psu-settings .check{margin-bottom:12px}
+.psu-tools{border-top:1px solid var(--line);margin-top:20px}
+.psu-tools .row{margin:4px 0 8px}
+.psu-tools>small{display:block}
+.psu-summary{font-size:.8rem}
 @media(max-width:540px){body{padding:16px 12px calc(170px + env(safe-area-inset-bottom))}.grid{grid-template-columns:minmax(0,1fr);gap:14px}.card,.content{padding:16px}details.card{padding:0}summary{padding:16px}.save-inner{align-items:stretch;flex-wrap:wrap;gap:8px}.save-info{flex-basis:100%}.save-inner>#savebutton{width:100%}#reviewbutton{margin:4px 0 0}#message{bottom:calc(175px + env(safe-area-inset-bottom));left:12px;right:12px}header h1{font-size:1.3rem}.actions button{padding:11px 8px}.status-grid{gap:8px}.item{padding:12px}.row>button{flex:1 1 150px}}
+@media(max-width:380px){.psu-live-head{flex-wrap:wrap}.psu-id-grid{grid-template-columns:1fr}.psu-reading{padding:10px}.psu-reading strong{font-size:1.05rem}}
 @media(prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
 </style>
 </head>
@@ -45,7 +70,24 @@
 </div></details>
 <details class="card" id="buttonsection"><summary>Physical buttons</summary><div class="content"><p class="intro">Choose what each button does on a short, double, or long press.</p><div id="buttons"></div><button onclick="addButton()">Add button</button></div></details>
 <details class="card" id="blesection"><summary>BLE controllers</summary><div class="content"><p class="intro">A nearby controller can power the board on. Leaving range never shuts it down.</p><div class="row"><button id="blescanbutton" onclick="startScan()">Find nearby devices</button><span id="scanstate" role="status"></span></div><div id="scanresults"></div><h3 style="margin-top:16px">Saved controllers</h3><div id="bledevices"></div><button onclick="addBle()">Add manually</button><details class="more"><summary>Advanced BLE scanning</summary><div class="grid"><label>Scan interval (ms)<input id="bleinterval" type="number"></label><label>Scan window (ms)<input id="blewindow" type="number"></label><label>Absent timeout (ms)<input id="bleabsent" type="number"></label></div></details></div></details>
-<details class="card" id="psusection"><summary>HP PSU monitoring</summary><div class="content"><div id="psustatus">PSU I²C disabled</div><div id="psuidentity" style="margin-top:8px"></div><p class="intro" style="margin-top:12px">Optional 3.3 V I²C monitoring. PSU on/off requires a separate hardware connection.</p><label class="check"><input id="psuenabled" type="checkbox">Enable PSU I²C</label><div class="grid"><label>SDA GPIO<input id="psusda" type="number"></label><label>SCL GPIO<input id="psuscl" type="number"></label><label>PIC address (decimal)<input id="psuaddress" type="number"></label><label>Poll interval (ms)<input id="psupoll" type="number"></label></div><div class="row" style="margin-top:16px"><button id="i2cscanbutton" onclick="scanI2c()">Scan I²C bus</button><span id="i2cscanstate" role="status"></span></div><div id="i2cscanresults"></div><small>Scans the pins above. A running PSU monitor must use the same pins. A line held low stops the scan early.</small><details class="more" id="psudatasection" ontoggle="if(this.open)loadPsuData()"><summary>PSU data viewer</summary><p class="intro">Shows the last complete reads from the monitor. Refreshing this view does not send new commands to the PSU.</p><div class="row"><button id="psudatabutton" onclick="loadPsuData()">Refresh data</button><span id="psudatastate" role="status"></span></div><h3 style="margin-top:16px">PIC register readings</h3><pre id="psuregisters">Open the viewer to load data.</pre><h3>EEPROM bytes</h3><pre id="psueeprom">Open the viewer to load data.</pre></details></div></details>
+<details class="card" id="psusection"><summary>HP PSU monitoring <small id="psusummary" class="psu-summary">Loading…</small></summary><div class="content">
+<div class="psu-live" aria-label="PSU telemetry">
+  <div class="psu-live-head"><div><span class="psu-label">Live readings</span><div id="psustatus" class="psu-state">Loading…</div></div><span id="psuage" class="psu-age" hidden></span></div>
+  <p id="psudetail" class="psu-detail">Checking the PSU monitor…</p>
+  <div id="psureadings" class="psu-readings" hidden>
+    <div class="psu-reading"><small>AC input</small><strong id="psuinputvoltage">—</strong><span id="psuinputcurrent">—</span></div>
+    <div class="psu-reading"><small>DC output</small><strong id="psuoutputvoltage">—</strong><span id="psuoutputcurrent">—</span></div>
+    <div class="psu-reading"><small>Internal temperature</small><strong id="psutemperature">—</strong></div>
+    <div class="psu-reading"><small>Fan reading</small><strong id="psufan">—</strong><span>Raw value</span></div>
+  </div>
+</div>
+<p class="psu-note">Live telemetry appears only while the PSU is on (PS_ON bridged). I²C monitoring does not switch PSU power.</p>
+<div id="psuidentitysection" class="psu-identity" hidden><h3>PSU identification</h3><div id="psuidentity" class="psu-id-grid"></div></div>
+<div class="psu-settings"><h3>Monitor settings</h3><p class="intro">Optional 3.3 V I²C monitoring.</p><label class="check"><input id="psuenabled" type="checkbox">Enable PSU I²C</label>
+<div class="grid"><label>SDA GPIO<input id="psusda" type="number"></label><label>SCL GPIO<input id="psuscl" type="number"></label><label>PIC address (decimal)<input id="psuaddress" type="number"></label><label>Poll interval (ms)<input id="psupoll" type="number"></label></div></div>
+<details class="more psu-tools"><summary>Diagnostics &amp; raw data</summary><div class="row"><button id="i2cscanbutton" onclick="scanI2c()">Scan I²C bus</button><span id="i2cscanstate" role="status"></span></div><div id="i2cscanresults"></div><small>Scans the pins above. A running PSU monitor must use the same pins. A line held low stops the scan early.</small>
+<details class="more" id="psudatasection" ontoggle="if(this.open)loadPsuData()"><summary>PSU data viewer</summary><p class="intro">Shows the last complete reads from the monitor. Refreshing this view does not send new commands to the PSU.</p><div class="row"><button id="psudatabutton" onclick="loadPsuData()">Refresh data</button><span id="psudatastate" role="status"></span></div><h3 style="margin-top:16px">PIC register readings</h3><pre id="psuregisters">Open the viewer to load data.</pre><h3>EEPROM bytes</h3><pre id="psueeprom">Open the viewer to load data.</pre></details></details>
+</div></details>
 <details class="card" id="securitysection"><summary>Admin password &amp; reset</summary><div class="content"><label>New admin password<input id="admin" type="password" minlength="8" autocomplete="new-password" placeholder="Leave blank to keep current"></label><small>Use at least 8 characters. The username is admin.</small><div style="margin-top:24px"><h3>Full factory reset</h3><p class="intro">Erases all settings and the Zigbee network. Available only while connected to the setup access point.</p><button id="factorybutton" class="danger" disabled onclick="factoryReset()">Erase all settings</button></div></div></details>
 <details class="card" id="otasection" hidden><summary>Firmware update</summary><div class="content"><p class="intro">Choose an application .bin for this chip and flash layout. Settings are preserved.</p><label>Firmware file<input id="firmware" type="file" accept=".bin"></label><button style="margin-top:12px" onclick="uploadFirmware()">Upload &amp; reboot</button></div></details>
 <footer class="save-dock"><div class="save-inner"><div class="save-info"><div id="validation" role="status" aria-live="polite">Loading settings…</div><small id="savehint">Changes apply after reboot.</small><button id="reviewbutton" hidden onclick="reviewErrors()">Show inputs to fix</button></div><button id="savebutton" class="primary" disabled onclick="save()">Save &amp; reboot</button></div></footer>
@@ -58,22 +100,39 @@ async function status(){if(closingAp)return;try{
  $('status').textContent=s.power_state.replaceAll('_',' ');$('status').className='power-state '+(s.power_state==='fault'?'bad':s.sensed_on?'ok':'');
  $('sensestatus').textContent='Power sensor: '+(s.sensed_on?'on':'off');$('wifistatus').textContent=s.config_ap?'Setup AP · '+s.wifi_ip:s.wifi_connected?s.wifi_ip:'Disconnected';$('zigbeestatus').textContent=s.config_ap&&cfg.radio_profile==='zigbee'?'Paused for setup':s.zigbee_joined?'Joined':s.zigbee_started?'Not joined':'Off';
  $('apnotice').hidden=!s.config_ap;$('factorybutton').disabled=!s.config_ap;
- let p=s.psu_i2c;$('psustatus').textContent=!p.enabled?'PSU I²C disabled':!p.available?`PSU I²C unavailable${p.error?': '+p.error:''}`:`Input ${p.input_voltage_v.toFixed(1)} V, ${p.input_current_a.toFixed(2)} A · Output ${p.output_voltage_v.toFixed(2)} V, ${p.output_current_a.toFixed(2)} A · Internal ${p.internal_temperature_f.toFixed(1)} °F · Fan reading ${p.fan_speed_raw}`;renderPsuIdentity(p);$('otasection').hidden=!s.ota_enabled;
- }catch(e){if(closingAp)return;$('connection').textContent='Disconnected';$('connection').className='badge bad';$('sensestatus').textContent='Connection lost. Reconnect to refresh the power state.'}}
+ let p=s.psu_i2c;renderPsuStatus(p);renderPsuIdentity(p);$('otasection').hidden=!s.ota_enabled;
+ }catch(e){if(closingAp)return;$('connection').textContent='Disconnected';$('connection').className='badge bad';$('sensestatus').textContent='Connection lost. Reconnect to refresh the power state.';$('psusummary').textContent='Disconnected';$('psusummary').className='psu-summary warn';$('psustatus').textContent='Connection lost';$('psustatus').className='psu-state warn';$('psuage').hidden=true;$('psureadings').hidden=true;$('psudetail').hidden=false;$('psudetail').textContent='Reconnect to refresh PSU readings.';$('psuidentitysection').hidden=true}}
+function renderPsuStatus(psu){
+ let available=!!psu?.enabled&&!!psu.available;
+ $('psusummary').textContent=!psu?.enabled?'Off':available?'Live':'Unavailable';
+ $('psusummary').className='psu-summary '+(available?'ok':psu?.enabled?'warn':'');
+ $('psustatus').textContent=!psu?.enabled?'Monitoring disabled':available?'Telemetry available':'Telemetry unavailable';
+ $('psustatus').className='psu-state '+(available?'ok':psu?.enabled?'warn':'');
+ $('psureadings').hidden=!available;$('psuage').hidden=!available;$('psudetail').hidden=available;
+ if(!available){$('psudetail').textContent=!psu?.enabled?'Enable PSU I²C below to begin monitoring.':psu.error?'Latest read: '+psu.error:'Waiting for the first complete reading.';return}
+ $('psuage').textContent=psu.age_ms<1000?`${psu.age_ms} ms ago`:`${(psu.age_ms/1000).toFixed(1)} s ago`;
+ $('psuinputvoltage').textContent=`${psu.input_voltage_v.toFixed(1)} V`;
+ $('psuinputcurrent').textContent=`${psu.input_current_a.toFixed(2)} A`;
+ $('psuoutputvoltage').textContent=`${psu.output_voltage_v.toFixed(2)} V`;
+ $('psuoutputcurrent').textContent=`${psu.output_current_a.toFixed(2)} A`;
+ $('psutemperature').textContent=`${psu.internal_temperature_c.toFixed(1)} °C`;
+ $('psufan').textContent=String(psu.fan_speed_raw);
+}
 function renderPsuIdentity(psu){
- let target=$('psuidentity'),info=psu.identity;
- if(!psu.enabled){target.textContent='';return}
- if(!info?.available){target.textContent=info?.error?'PSU identification: '+info.error:'PSU identification: waiting for EEPROM read';return}
+ let target=$('psuidentity'),info=psu?.identity;
+ $('psuidentitysection').hidden=!psu?.enabled;target.replaceChildren();
+ if(!psu?.enabled)return;
+ if(!info?.available){target.textContent=info?.error||'Waiting for EEPROM read.';return}
  let fields=[['manufacturer','Manufacturer'],['product_name','Product'],['part_number','Part number'],['revision','Revision'],['serial_number','Serial/CT'],['board_part_number','Board part number']];
- let text=fields.filter(([key])=>info[key]).map(([key,label])=>`${label}: ${info[key]}`);
- if(info.rated_capacity_w)text.push(`Rated capacity: ${info.rated_capacity_w} W`);
- target.textContent=text.join(' · ');
+ let values=fields.filter(([key])=>info[key]).map(([key,label])=>[label,info[key]]);
+ if(info.rated_capacity_w)values.push(['Rated capacity',`${info.rated_capacity_w} W`]);
+ for(let [label,value] of values){let item=document.createElement('div'),name=document.createElement('small'),reading=document.createElement('strong');name.textContent=label;reading.textContent=value;item.append(name,reading);target.append(item)}
 }
 async function loadPsuData(){let button=$('psudatabutton');if(button.disabled)return;button.disabled=true;$('psudatastate').textContent='Loading…';try{
  let data=await api('/api/v1/psu/data');if(!data.enabled){$('psudatastate').textContent='PSU I²C is disabled';$('psuregisters').textContent='No PIC data.';$('psueeprom').textContent='No EEPROM data.';return}
  $('psudatastate').textContent='Cached data loaded';
- let labels=[['0x08','Input voltage',32,'V'],['0x0A','Input current',128,'A'],['0x0E','Output voltage',256,'V'],['0x10','Output current',128,'A'],['0x1C','Internal temperature',32,'°F'],['0x1E','Fan reading',1,'raw']];
- $('psuregisters').textContent=data.pic_read?`Last complete sample ${data.pic_age_ms} ms ago${data.pic_available?'':' · current telemetry unavailable'}\n`+labels.map(([register,label,scale,unit])=>{let raw=data.pic_registers?.[register];return Number.isFinite(raw)?`${register}  ${label}: 0x${raw.toString(16).toUpperCase().padStart(4,'0')} (${raw})  ·  ${(raw/scale).toFixed(scale===1?0:2)} ${unit}`:`${register}  ${label}: missing`}).join('\n'):'No complete PIC register sample yet.';
+ let labels=[['0x08','Input voltage',32,'V'],['0x0A','Input current',128,'A'],['0x0E','Output voltage',256,'V'],['0x10','Output current',128,'A'],['0x1C','Internal temperature',32,'°C'],['0x1E','Fan reading',1,'raw']];
+ $('psuregisters').textContent=data.pic_read?`Last complete sample ${data.pic_age_ms} ms ago${data.pic_available?'':' · current telemetry unavailable'}\n`+labels.map(([register,label,scale,unit])=>{let raw=data.pic_registers?.[register];if(!Number.isFinite(raw))return `${register}  ${label}: missing`;let value=raw/scale;if(register==='0x1C')value=(value-32)*5/9;return `${register}  ${label}: 0x${raw.toString(16).toUpperCase().padStart(4,'0')} (${raw})  ·  ${value.toFixed(scale===1?0:2)} ${unit}`}).join('\n'):'No complete PIC register sample yet.';
  if(!data.eeprom_read){$('psueeprom').textContent='No complete EEPROM read yet.';return}
  let bytes=data.eeprom_hex.match(/../g)||[],lines=[];for(let offset=0;offset<bytes.length;offset+=16){let row=bytes.slice(offset,offset+16);let ascii=row.map(hex=>{let b=parseInt(hex,16);return b>=32&&b<=126?String.fromCharCode(b):'.'}).join('');lines.push(`${offset.toString(16).toUpperCase().padStart(2,'0')}: ${row.join(' ')}  |${ascii}|`)}
  $('psueeprom').textContent=`Address 0x${data.eeprom_address.toString(16).toUpperCase()} · last complete read ${data.eeprom_age_ms} ms ago\n`+lines.join('\n');

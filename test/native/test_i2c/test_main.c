@@ -192,7 +192,8 @@ esp_err_t i2c_master_receive(i2c_master_dev_handle_t device, uint8_t *data, size
     ++reads;
     if (read_timeouts) { --read_timeouts; return ESP_ERR_TIMEOUT; }
     waiting_reply = false;
-    uint16_t raw = reg == 0x08 ? 230 * 32 : reg == 0x0e ? 12 * 256 : 128;
+    uint16_t raw = reg == 0x08 ? 230 * 32 : reg == 0x0e ? 12 * 256 :
+                   reg == 0x1c ? 122 * 32 : 128;
     data[0] = (uint8_t)raw;
     data[1] = (uint8_t)(raw >> 8);
     data[2] = (uint8_t)(0U - (data[0] + data[1]) + (corrupt ? 1 : 0));
@@ -399,6 +400,8 @@ int main(int argc, char **argv)
         } else {
             assert(status.available && !status.error[0]);
             assert(status.input_voltage_v == 230.0f && status.output_voltage_v == 12.0f);
+            assert(status.internal_temperature_c > 49.99f &&
+                   status.internal_temperature_c < 50.01f);
             unsigned successful = !strcmp(scenario, "psu_identity_cache") ? 12 : 6;
             assert(reads == successful + (!strcmp(scenario, "psu_read_recovery") ? 1U : 0U));
             assert(writes == successful + (strstr(scenario, "_recovery") ? 1U : 0U));

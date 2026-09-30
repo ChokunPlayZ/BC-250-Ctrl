@@ -25,7 +25,7 @@ typedef struct {
     float input_current_a;
     float output_voltage_v;
     float output_current_a;
-    float internal_temperature_f;
+    float internal_temperature_c;
     uint16_t fan_speed_raw;
     bc250_psu_i2c_identity_status_t identity;
 } bc250_psu_i2c_status_t;
