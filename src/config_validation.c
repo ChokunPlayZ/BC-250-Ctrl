@@ -119,9 +119,9 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         }
         if ((config->timing.strategy == BC250_START_PS_ON_ONLY ||
              config->timing.strategy == BC250_START_PS_ON_THEN_BUTTON ||
-             config->timing.strategy == BC250_START_SIMULTANEOUS) &&
+             config->timing.strategy == BC250_START_SIMULTANEOUS || config->hold_ps_on) &&
             config->ps_on.gpio == BC250_GPIO_DISABLED) {
-            snprintf(error, error_size, "selected start strategy requires PS_ON GPIO");
+            snprintf(error, error_size, "selected start strategy or PS_ON hold requires PS_ON GPIO");
             return ESP_ERR_INVALID_ARG;
         }
         if (config->power_button.gpio == BC250_GPIO_DISABLED) {

@@ -36,6 +36,8 @@ Returns the complete non-secret configuration used by the setup UI, plus `recomm
 
 Applies a partial JSON patch, validates GPIO ranges, blocked pins, required pins, conflicts, and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds. `psu_i2c` accepts `enabled`, `sda_gpio`, `scl_gpio`, `address` (decimal 88–95 for `0x58`–`0x5F`), and `poll_interval_ms` (500–60000). It is disabled by default. `radio_profile` accepts only `wifi` or `zigbee`; the removed `hybrid` value and other invalid profiles return `400 Bad Request`.
 
+`hold_ps_on` is a boolean, default `false`. Set `{"hold_ps_on":true}` to keep the ESP32's PS_ON contact closed whenever board power is detected, including external startup, an already-running board at service startup, and shutdown until power sense turns off. It requires an assigned PS_ON GPIO even with button-only startup. A shutdown timeout preserves the hold while the board is still sensed on. This field is also returned by `GET /api/v1/config`; omitting it from a patch preserves its current value.
+
 ### `POST /api/v1/ble/scan`
 
 Starts a 15-second active discovery scan.

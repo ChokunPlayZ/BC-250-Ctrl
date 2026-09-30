@@ -81,6 +81,11 @@ static void test_settings(void)
     assert(!strcmp(config.zigbee_model, "Custom model"));
     set(&config, "timing.strategy", "button_only");
     assert(config.timing.strategy == BC250_START_BUTTON_ONLY);
+    set(&config, "hold_ps_on", "on");
+    assert(config.hold_ps_on);
+    set(&config, "hold_ps_on", "off");
+    assert(!config.hold_ps_on);
+    reject(&config, "hold_ps_on", "maybe");
     set(&config, "configured", "yes");
     assert(config.configured);
     set(&config, "configured", "off");

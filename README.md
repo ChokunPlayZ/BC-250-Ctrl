@@ -11,6 +11,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 - Turns the BC-250 on and off through optically isolated `PS_ON#` and motherboard power-button signals.
 - Reads the board's power LED through an optocoupler, so reported power state comes from the hardware rather than the last command sent.
 - Supports four startup methods: PS_ON only, power button only, PS_ON followed by the power button, or both at the same time.
+- Optionally keeps the ESP32's PS_ON contact closed while board power is detected, including external startup and shutdown until the board turns off. Enable **Keep PS_ON closed while board power is detected** in Power wiring & timing; it defaults to off.
 - Supports normal shutdown and an explicit five-second force-off action. A failed startup or shutdown enters a fault state instead of repeatedly toggling the outputs.
 - Optionally monitors PSUs using the HP Common Slot protocol, including DPS-1200/750 models, through their I²C PIC interface. The web status and REST API show input/output voltage and current, internal temperature, the fan reading, and any validated identification available from an EEPROM on the same bus. A web and serial data viewer can show cached raw PIC readings and EEPROM bytes. Check the PSU-side bus voltage before connecting it to 3.3 V ESP32 GPIOs.
 
@@ -44,7 +45,7 @@ ESP-IDF firmware for controlling a BC-250 locally and safely through optically i
 - Provides standalone C5 recovery images that erase saved settings without loading GPIO assignments; see [recovery flashing](docs/RECOVERY.md).
 - Supports browser-based firmware updates on 8 MB targets, with two application slots and bootloader rollback. The 4 MB targets are updated over serial or USB.
 
-All external GPIOs are disabled by default. The firmware does not restore a previous output state during startup. Add external bias resistors to keep the output optocouplers off while the ESP32 is resetting or starting; see the wiring guide before connecting hardware.
+All external GPIOs are disabled by default. The firmware does not restore a previous output state during startup. With PS_ON hold enabled, the power service asserts PS_ON if it detects that the board is already on. Add external bias resistors to keep the output optocouplers off while the ESP32 is resetting or starting; see the wiring guide before connecting hardware.
 
 ## Build targets
 
@@ -73,7 +74,7 @@ You can pass any normal `idf.py` action or option after the profile. For example
 1. Flash the correct target while all power-control GPIO roles are still disabled.
 2. Open the serial monitor. On first initialization, note the generated 12-character `admin` password, which is printed once and is used after joining your normal Wi-Fi network.
 3. Join the open `BC250-Ctrl-XXXX` network without a password and open `http://192.168.4.1/`.
-4. Select a radio profile, assign pins from the board’s schematic, set active polarity, and configure the power timings. Configured mode requires power-sense and power-button GPIOs; every start strategy except button-only also requires PS_ON.
+4. Select a radio profile, assign pins from the board’s schematic, set active polarity, and configure the power timings. Configured mode requires power-sense and power-button GPIOs; every start strategy except button-only also requires PS_ON. Enabling PS_ON hold requires PS_ON in every startup method.
 5. Add buttons and BLE controllers as needed. For the optional local button and status LED, follow the [connection diagrams and matching settings](docs/WIRING.md#local-buttons-and-status-led). Set an admin password of at least eight characters.
    For a compatible HP Common Slot PSU, assign SDA/SCL pins after checking [the wiring guide](docs/WIRING.md). The UI can scan the bus and select a detected PIC address before saving; the PIC address defaults to decimal 95 (`0x5F`). Enable PSU I²C to monitor it after reboot.
 6. For Wi-Fi mode, configure a WPA2-or-stronger network; open, WEP, and WPA-only networks are not supported.

@@ -69,6 +69,7 @@ set power_button.gpio 5
 set power_sense.gpio 6
 set status_led.gpio 8
 set timing.strategy ps_on_then_button
+set hold_ps_on on
 set psu_i2c.sda_gpio 9
 set psu_i2c.scl_gpio 10
 set psu_i2c.address 0x5f

@@ -63,6 +63,7 @@ static void log_boot_config(const bc250_config_t *config, bool first_boot, bool 
              strategy < sizeof(strategies) / sizeof(strategies[0]) ? strategies[strategy] : "invalid",
              config->timing.inter_output_delay_ms, config->timing.button_pulse_ms,
              config->timing.handoff_delay_ms);
+    ESP_LOGI(TAG, "Hold PS_ON while power is detected: %s", config->hold_ps_on ? "enabled" : "disabled");
     ESP_LOGI(TAG, "Power timeouts: start=%" PRIu32 " ms; shutdown=%" PRIu32
              " ms; force-off=%" PRIu32 " ms; retry cooldown=%" PRIu32 " ms; sense on/off=%u/%u ms",
              config->timing.start_timeout_ms, config->timing.shutdown_timeout_ms,

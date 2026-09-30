@@ -26,6 +26,15 @@ int main(void)
     bc250_config_t config = fixture();
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
     assert(!bc250_config_pin_warnings(&config, warning, sizeof(warning)));
+    config.timing.strategy = BC250_START_BUTTON_ONLY;
+    config.ps_on.gpio = BC250_GPIO_DISABLED;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
+    config.hold_ps_on = true;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    assert(strstr(error, "PS_ON"));
+    config.ps_on.gpio = 0;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
+    config = fixture();
     config.radio_profile = BC250_RADIO_LEGACY_HYBRID;
     assert(bc250_config_validate(&config, error, sizeof(error)) != ESP_OK);
     bc250_config_t migrated = config;

@@ -8,9 +8,9 @@ static uint64_t elapsed(uint64_t now, uint64_t then)
     return now >= then ? now - then : 0;
 }
 
-static void outputs_off(bc250_power_logic_t *logic)
+static void outputs_idle(bc250_power_logic_t *logic, bool sensed_on)
 {
-    logic->outputs.ps_on = false;
+    logic->outputs.ps_on = logic->hold_ps_on && sensed_on;
     logic->outputs.power_button = false;
 }
 
@@ -36,18 +36,19 @@ bc250_power_timing_t bc250_power_default_timing(void)
 }
 
 void bc250_power_logic_init(bc250_power_logic_t *logic, const bc250_power_timing_t *timing,
-                            bool sensed_on, uint64_t now_ms)
+                            bool hold_ps_on, bool sensed_on, uint64_t now_ms)
 {
     if (logic == NULL) {
         return;
     }
     memset(logic, 0, sizeof(*logic));
     logic->timing = timing != NULL ? *timing : bc250_power_default_timing();
+    logic->hold_ps_on = hold_ps_on;
     logic->state = sensed_on ? BC250_POWER_ON : BC250_POWER_OFF;
     logic->state_started_ms = now_ms;
     logic->phase_started_ms = now_ms;
     logic->initialized = true;
-    outputs_off(logic);
+    outputs_idle(logic, sensed_on);
 }
 
 static bool begin_start(bc250_power_logic_t *logic, uint64_t now_ms)
@@ -56,7 +57,7 @@ static bool begin_start(bc250_power_logic_t *logic, uint64_t now_ms)
         elapsed(now_ms, logic->last_failure_ms) < logic->timing.retry_cooldown_ms) {
         return false;
     }
-    outputs_off(logic);
+    outputs_idle(logic, false);
     logic->button_pulse_completed = false;
     logic->handoff_started = false;
     enter_state(logic, BC250_POWER_STARTING, now_ms);
@@ -86,7 +87,7 @@ static bool begin_start(bc250_power_logic_t *logic, uint64_t now_ms)
 
 static bool begin_stop(bc250_power_logic_t *logic, bool force, uint64_t now_ms)
 {
-    outputs_off(logic);
+    outputs_idle(logic, true);
     logic->outputs.power_button = true;
     logic->button_pulse_completed = false;
     enter_state(logic, BC250_POWER_STOPPING, now_ms);
@@ -115,8 +116,8 @@ bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action
         }
         return begin_start(logic, now_ms);
     case BC250_POWER_ACTION_OFF:
-        if (logic->state == BC250_POWER_STARTING) {
-            outputs_off(logic);
+        if (logic->state == BC250_POWER_STARTING && !(logic->hold_ps_on && sensed_on)) {
+            outputs_idle(logic, false);
             enter_state(logic, BC250_POWER_OFF, now_ms);
             return true;
         }
@@ -125,15 +126,15 @@ bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action
         }
         return begin_stop(logic, false, now_ms);
     case BC250_POWER_ACTION_FORCE_OFF:
-        if (logic->state == BC250_POWER_STARTING) {
-            outputs_off(logic);
+        if (logic->state == BC250_POWER_STARTING && !(logic->hold_ps_on && sensed_on)) {
+            outputs_idle(logic, false);
             enter_state(logic, BC250_POWER_OFF, now_ms);
             return true;
         }
         if (!sensed_on) {
             return true;
         }
-        outputs_off(logic);
+        outputs_idle(logic, true);
         enter_state(logic, BC250_POWER_STOPPING, now_ms);
         logic->outputs.power_button = true;
         logic->button_pulse_completed = true;
@@ -149,6 +150,7 @@ static void tick_starting(bc250_power_logic_t *logic, bool sensed_on, uint64_t n
     uint64_t state_age = elapsed(now_ms, logic->state_started_ms);
 
     if (sensed_on) {
+        if (logic->hold_ps_on) logic->outputs.ps_on = true;
         logic->outputs.power_button = false;
         logic->button_pulse_completed = true;
     } else if (!logic->button_pulse_completed) {
@@ -172,14 +174,14 @@ static void tick_starting(bc250_power_logic_t *logic, bool sensed_on, uint64_t n
             logic->phase_started_ms = now_ms;
         }
         if (elapsed(now_ms, logic->phase_started_ms) >= logic->timing.handoff_delay_ms) {
-            outputs_off(logic);
+            outputs_idle(logic, true);
             enter_state(logic, BC250_POWER_ON, now_ms);
         }
         return;
     }
 
     if (state_age >= logic->timing.start_timeout_ms) {
-        outputs_off(logic);
+        outputs_idle(logic, false);
         logic->last_failure_ms = now_ms;
         enter_state(logic, BC250_POWER_FAULT, now_ms);
     }
@@ -198,10 +200,10 @@ static void tick_stopping(bc250_power_logic_t *logic, bool sensed_on, uint64_t n
         }
     }
     if (!sensed_on) {
-        outputs_off(logic);
+        outputs_idle(logic, false);
         enter_state(logic, BC250_POWER_OFF, now_ms);
     } else if (state_age >= logic->timing.shutdown_timeout_ms) {
-        outputs_off(logic);
+        outputs_idle(logic, sensed_on);
         logic->last_failure_ms = now_ms;
         enter_state(logic, BC250_POWER_FAULT, now_ms);
     }
@@ -220,18 +222,19 @@ void bc250_power_tick(bc250_power_logic_t *logic, bool sensed_on, uint64_t now_m
         tick_stopping(logic, sensed_on, now_ms);
         break;
     case BC250_POWER_ON:
+        outputs_idle(logic, sensed_on);
         if (!sensed_on) {
-            outputs_off(logic);
             enter_state(logic, BC250_POWER_OFF, now_ms);
         }
         break;
     case BC250_POWER_OFF:
         if (sensed_on) {
-            outputs_off(logic);
+            outputs_idle(logic, true);
             enter_state(logic, BC250_POWER_ON, now_ms);
         }
         break;
     case BC250_POWER_FAULT:
+        outputs_idle(logic, sensed_on);
         if (sensed_on) {
             enter_state(logic, BC250_POWER_ON, now_ms);
         } else if (elapsed(now_ms, logic->last_failure_ms) >= logic->timing.retry_cooldown_ms) {
@@ -240,7 +243,7 @@ void bc250_power_tick(bc250_power_logic_t *logic, bool sensed_on, uint64_t now_m
         break;
     case BC250_POWER_UNKNOWN:
     default:
-        outputs_off(logic);
+        outputs_idle(logic, sensed_on);
         enter_state(logic, sensed_on ? BC250_POWER_ON : BC250_POWER_OFF, now_ms);
         break;
     }

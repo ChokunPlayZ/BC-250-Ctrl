@@ -70,11 +70,12 @@ static void power_task(void *arg)
     uint64_t sense_ready_at = raw_changed_at + settle_ms;
     bool initial = bc250_gpio_read(&s_config.power_sense);
     s_sensed_on = initial;
-    bc250_power_logic_init(&s_logic, &s_config.timing, initial, now_ms());
+    bc250_power_logic_init(&s_logic, &s_config.timing, s_config.hold_ps_on, initial, now_ms());
     apply_outputs(&s_logic.outputs);
     bc250_power_state_t announced = s_logic.state;
-    ESP_LOGI(TAG, "Initial power state: %s; sense: %s; outputs inactive",
-             bc250_power_state_name(announced), initial ? "on" : "off");
+    ESP_LOGI(TAG, "Initial power state: %s; sense: %s; PS_ON: %s",
+             bc250_power_state_name(announced), initial ? "on" : "off",
+             s_logic.outputs.ps_on ? "active" : "inactive");
 
     while (true) {
         uint64_t now = now_ms();
@@ -126,8 +127,8 @@ static void power_task(void *arg)
         if (state != announced || s_sensed_on != was_sensed_on) {
             announced = state;
             if (state == BC250_POWER_FAULT) {
-                ESP_LOGW(TAG, "Power state: fault; sequence timed out; sense=%s; outputs inactive; retry cooldown applies",
-                         s_sensed_on ? "on" : "off");
+                ESP_LOGW(TAG, "Power state: fault; sequence timed out; sense=%s; PS_ON=%s; retry cooldown applies",
+                         s_sensed_on ? "on" : "off", outputs.ps_on ? "active" : "inactive");
             } else {
                 ESP_LOGI(TAG, "Power state: %s (sense=%s)", bc250_power_state_name(state), s_sensed_on ? "on" : "off");
             }

@@ -32,7 +32,7 @@ static void test_start_sequence(void)
 {
     bc250_power_logic_t p;
     bc250_power_timing_t timing = bc250_power_default_timing();
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     assert(p.outputs.ps_on);
     assert(!p.outputs.power_button);
@@ -52,7 +52,7 @@ static void test_start_timeout(void)
 {
     bc250_power_logic_t p;
     bc250_power_timing_t timing = bc250_power_default_timing();
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     bc250_power_tick(&p, false, 15001);
     assert(p.state == BC250_POWER_FAULT);
@@ -66,18 +66,18 @@ static void test_start_strategies_and_idempotence(void)
     bc250_power_timing_t timing = bc250_power_default_timing();
 
     timing.strategy = BC250_START_PS_ON_ONLY;
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     assert(p.outputs.ps_on && !p.outputs.power_button);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 2));
 
     timing.strategy = BC250_START_BUTTON_ONLY;
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     assert(!p.outputs.ps_on && p.outputs.power_button);
 
     timing.strategy = BC250_START_SIMULTANEOUS;
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     assert(p.outputs.ps_on && p.outputs.power_button);
 }
@@ -87,12 +87,12 @@ static void test_zero_delay_and_fast_sense(void)
     bc250_power_logic_t p;
     bc250_power_timing_t timing = bc250_power_default_timing();
     timing.inter_output_delay_ms = 0;
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     assert(p.outputs.ps_on && p.outputs.power_button);
 
     timing.inter_output_delay_ms = 500;
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     bc250_power_tick(&p, true, 200);
     assert(p.outputs.ps_on && !p.outputs.power_button);
@@ -104,13 +104,13 @@ static void test_conflicting_commands_deassert_outputs(void)
 {
     bc250_power_logic_t p;
     bc250_power_timing_t timing = bc250_power_default_timing();
-    bc250_power_logic_init(&p, &timing, false, 0);
+    bc250_power_logic_init(&p, &timing, false, false, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
     assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 2));
     assert(p.state == BC250_POWER_OFF);
     assert(!p.outputs.ps_on && !p.outputs.power_button);
 
-    bc250_power_logic_init(&p, &timing, true, 100);
+    bc250_power_logic_init(&p, &timing, false, true, 100);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, true, 101));
     assert(!bc250_power_request(&p, BC250_POWER_ACTION_ON, true, 102));
     assert(p.state == BC250_POWER_STOPPING);
@@ -120,7 +120,7 @@ static void test_graceful_and_force_off(void)
 {
     bc250_power_logic_t p;
     bc250_power_timing_t timing = bc250_power_default_timing();
-    bc250_power_logic_init(&p, &timing, true, 0);
+    bc250_power_logic_init(&p, &timing, false, true, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, true, 1));
     assert(p.outputs.power_button);
     bc250_power_tick(&p, true, 251);
@@ -128,7 +128,7 @@ static void test_graceful_and_force_off(void)
     bc250_power_tick(&p, false, 1000);
     assert(p.state == BC250_POWER_OFF);
 
-    bc250_power_logic_init(&p, &timing, true, 2000);
+    bc250_power_logic_init(&p, &timing, false, true, 2000);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_FORCE_OFF, true, 2001));
     bc250_power_tick(&p, true, 6999);
     assert(p.outputs.power_button);
@@ -141,11 +141,124 @@ static void test_shutdown_timeout(void)
     bc250_power_logic_t p;
     bc250_power_timing_t timing = bc250_power_default_timing();
     timing.shutdown_timeout_ms = 1000;
-    bc250_power_logic_init(&p, &timing, true, 0);
+    bc250_power_logic_init(&p, &timing, false, true, 0);
     assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, true, 1));
     bc250_power_tick(&p, true, 1001);
     assert(p.state == BC250_POWER_FAULT);
     assert(!p.outputs.ps_on && !p.outputs.power_button);
+}
+
+static void test_ps_on_hold_detected_power(void)
+{
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    for (int enabled = 0; enabled <= 1; ++enabled) {
+        bc250_power_logic_t p;
+        /* Booting with an already-running board must not press its power button. */
+        bc250_power_logic_init(&p, &timing, enabled, true, 0);
+        assert(p.state == BC250_POWER_ON);
+        assert(p.outputs.ps_on == (bool)enabled && !p.outputs.power_button);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, true, 1));
+        bc250_power_tick(&p, true, 2);
+        assert(p.outputs.ps_on == (bool)enabled && !p.outputs.power_button);
+        bc250_power_tick(&p, false, 3);
+        assert(p.state == BC250_POWER_OFF);
+        assert(!p.outputs.ps_on && !p.outputs.power_button);
+
+        /* External startup uses the same hold without a controller ON request. */
+        bc250_power_tick(&p, true, 4);
+        assert(p.state == BC250_POWER_ON);
+        assert(p.outputs.ps_on == (bool)enabled && !p.outputs.power_button);
+        bc250_power_tick(&p, false, 5);
+        assert(!p.outputs.ps_on && !p.outputs.power_button);
+    }
+}
+
+static void test_ps_on_hold_start_strategies(void)
+{
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    for (int strategy = BC250_START_PS_ON_ONLY; strategy <= BC250_START_SIMULTANEOUS; ++strategy) {
+        bc250_power_logic_t p;
+        timing.strategy = strategy;
+        bc250_power_logic_init(&p, &timing, true, false, 0);
+        assert(!p.outputs.ps_on && !p.outputs.power_button);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+        assert(p.outputs.ps_on == (strategy != BC250_START_BUTTON_ONLY));
+        bc250_power_tick(&p, true, 100);
+        assert(p.outputs.ps_on && !p.outputs.power_button);
+        bc250_power_tick(&p, true, 100 + timing.handoff_delay_ms);
+        assert(p.state == BC250_POWER_ON);
+        assert(p.outputs.ps_on && !p.outputs.power_button);
+        bc250_power_tick(&p, true, 10000);
+        assert(p.outputs.ps_on);
+        bc250_power_tick(&p, false, 10001);
+        assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on);
+    }
+}
+
+static void test_ps_on_hold_shutdown(void)
+{
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    const bc250_power_action_t actions[] = {
+        BC250_POWER_ACTION_OFF, BC250_POWER_ACTION_TOGGLE, BC250_POWER_ACTION_FORCE_OFF,
+    };
+    for (unsigned i = 0; i < sizeof(actions) / sizeof(actions[0]); ++i) {
+        bc250_power_logic_t p;
+        uint32_t pulse = actions[i] == BC250_POWER_ACTION_FORCE_OFF ? timing.force_off_ms : timing.button_pulse_ms;
+        bc250_power_logic_init(&p, &timing, true, true, 0);
+        assert(bc250_power_request(&p, actions[i], true, 1));
+        assert(p.state == BC250_POWER_STOPPING);
+        assert(p.outputs.ps_on && p.outputs.power_button);
+        bc250_power_tick(&p, true, pulse);
+        assert(p.outputs.ps_on && p.outputs.power_button);
+        bc250_power_tick(&p, true, pulse + 1);
+        assert(p.outputs.ps_on && !p.outputs.power_button);
+        bc250_power_tick(&p, false, pulse + 2);
+        assert(p.state == BC250_POWER_OFF);
+        assert(!p.outputs.ps_on && !p.outputs.power_button);
+    }
+
+    /* A failed graceful shutdown must not abruptly cut the still-running board. */
+    bc250_power_logic_t p;
+    bc250_power_logic_init(&p, &timing, true, true, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, true, 1));
+    bc250_power_tick(&p, true, 1 + timing.shutdown_timeout_ms);
+    assert(p.state == BC250_POWER_FAULT);
+    assert(p.outputs.ps_on && !p.outputs.power_button);
+    bc250_power_tick(&p, true, 2 + timing.shutdown_timeout_ms);
+    assert(p.outputs.ps_on && !p.outputs.power_button);
+    bc250_power_tick(&p, false, 3 + timing.shutdown_timeout_ms);
+    assert(!p.outputs.ps_on && !p.outputs.power_button);
+}
+
+static void test_ps_on_hold_start_interrupted(void)
+{
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    const bc250_power_action_t actions[] = {BC250_POWER_ACTION_OFF, BC250_POWER_ACTION_FORCE_OFF};
+    for (unsigned i = 0; i < sizeof(actions) / sizeof(actions[0]); ++i) {
+        for (int sensed_on = 0; sensed_on <= 1; ++sensed_on) {
+            bc250_power_logic_t p;
+            bc250_power_logic_init(&p, &timing, true, false, 0);
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+            bc250_power_tick(&p, sensed_on, 2);
+            assert(bc250_power_request(&p, actions[i], sensed_on, 3));
+            assert(p.state == (sensed_on ? BC250_POWER_STOPPING : BC250_POWER_OFF));
+            assert(p.outputs.ps_on == (bool)sensed_on);
+            assert(p.outputs.power_button == (bool)sensed_on);
+            bc250_power_tick(&p, false, 4);
+            assert(!p.outputs.ps_on && !p.outputs.power_button);
+        }
+    }
+
+    bc250_power_logic_t p;
+    bc250_power_logic_init(&p, &timing, true, false, 0);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+    bc250_power_tick(&p, false, 1 + timing.start_timeout_ms);
+    assert(p.state == BC250_POWER_FAULT);
+    assert(!p.outputs.ps_on && !p.outputs.power_button);
+    /* A late, externally detected start should still be held. */
+    bc250_power_tick(&p, true, 2 + timing.start_timeout_ms);
+    assert(p.state == BC250_POWER_ON);
+    assert(p.outputs.ps_on && !p.outputs.power_button);
 }
 
 static void test_button_gestures(void)
@@ -221,6 +334,10 @@ int main(void)
     test_conflicting_commands_deassert_outputs();
     test_graceful_and_force_off();
     test_shutdown_timeout();
+    test_ps_on_hold_detected_power();
+    test_ps_on_hold_start_strategies();
+    test_ps_on_hold_shutdown();
+    test_ps_on_hold_start_interrupted();
     test_button_gestures();
     test_presence_deduplication();
     test_ble_matchers();

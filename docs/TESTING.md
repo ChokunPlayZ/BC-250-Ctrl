@@ -11,9 +11,10 @@
 
 Use optocoupler outputs to drive isolated sense inputs rather than connecting outputs directly to GPIOs.
 
-- Confirm both outputs remain inactive during reset, bootloader operation, firmware startup, and recovery AP mode.
+- Confirm both outputs remain inactive during reset, bootloader operation, and recovery AP mode. At power-service startup, both remain inactive by default; with PS_ON hold enabled, only PS_ON should assert when the board is sensed on.
 - Exercise PS_ON only, button only, delayed PS_ON then button, and zero-delay simultaneous start.
 - Verify button pulse, sensed-on handoff, start timeout, 60-second retry cooldown, graceful shutdown, force-off hold, and shutdown timeout.
+- Enable PS_ON hold and verify all four startup methods keep the contact closed after handoff. Test externally starting the board, starting the ESP32 while the board is already on, shutdown during handoff, normal shutdown, force-off, and shutdown timeout. PS_ON must remain closed throughout sensed-on operation and open after the sense-off filter; a start timeout with sense off must release both outputs. Verify the checkbox saves/reloads and rejects a missing PS_ON GPIO with button-only startup. Upgrade version 1/2 active and pending settings and verify all previous settings survive with hold disabled.
 - Simulate missing, blinking, and stuck power-LED inputs.
 - Brown out and watchdog-reset the ESP32 at every sequence phase; no restart may produce an unintended pulse.
 

@@ -75,14 +75,18 @@ static esp_err_t read_blob(nvs_handle_t handle, const char *key, bc250_config_t 
         }
         return ESP_OK;
     }
-    // Version 1 ended at the Zigbee model, with tail padding up to the next 4-byte boundary.
-    if (size == offsetof(bc250_config_t, psu_i2c) && config->schema_version == 1) {
+    // Older versions share this prefix. Version 1 ended before PSU settings;
+    // version 2 ended before hold_ps_on. Both used 4-byte tail alignment.
+    bool version_1 = size == offsetof(bc250_config_t, psu_i2c) && config->schema_version == 1;
+    bool version_2 = size == offsetof(bc250_config_t, hold_ps_on) && config->schema_version == 2;
+    if (version_1 || version_2) {
         uint32_t saved_crc = config->crc32;
         config->crc32 = 0;
         bool valid = saved_crc == esp_crc32_le(0, (const uint8_t *)config, size);
         config->crc32 = saved_crc;
         if (valid) {
-            psu_i2c_defaults(&config->psu_i2c);
+            if (version_1) psu_i2c_defaults(&config->psu_i2c);
+            config->hold_ps_on = false;
             bc250_config_migrate_legacy_profile(config);
             finalize_config(config);
             return ESP_OK;
@@ -395,6 +399,7 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "schema_version", config->schema_version);
     cJSON_AddBoolToObject(root, "configured", config->configured);
+    cJSON_AddBoolToObject(root, "hold_ps_on", config->hold_ps_on);
     cJSON_AddStringToObject(root, "radio_profile", bc250_radio_profile_name(config->radio_profile));
     cJSON_AddStringToObject(root, "hostname", config->hostname);
     cJSON_AddStringToObject(root, "wifi_ssid", config->wifi_ssid);
@@ -521,6 +526,15 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     }
     cJSON *item = cJSON_GetObjectItemCaseSensitive(root, "configured");
     if (cJSON_IsBool(item)) config->configured = cJSON_IsTrue(item);
+    item = cJSON_GetObjectItemCaseSensitive(root, "hold_ps_on");
+    if (item != NULL) {
+        if (!cJSON_IsBool(item)) {
+            snprintf(error, error_size, "hold_ps_on must be a boolean");
+            cJSON_Delete(root);
+            return ESP_ERR_INVALID_ARG;
+        }
+        config->hold_ps_on = cJSON_IsTrue(item);
+    }
     item = cJSON_GetObjectItemCaseSensitive(root, "advanced_gpio_override");
     if (cJSON_IsBool(item)) config->advanced_gpio_override = cJSON_IsTrue(item);
     item = cJSON_GetObjectItemCaseSensitive(root, "radio_profile");

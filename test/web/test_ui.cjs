@@ -5,7 +5,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const html = readFileSync(path.join(__dirname, '../../src/web_ui.html'), 'utf8');
 const config = {
-  configured: true, radio_profile: 'zigbee', hostname: 'bc250', wifi_ssid: 'Home',
+  configured: true, hold_ps_on: false, radio_profile: 'zigbee', hostname: 'bc250', wifi_ssid: 'Home',
   zigbee_channel: 0, zigbee_model: 'BC250 Controller',
   ble_scan_interval_ms: 100, ble_scan_window_ms: 50, ble_absent_ms: 10000,
   pins: { ps_on: {gpio: 4}, power_button: {gpio: 5}, power_sense: {gpio: 6}, status_led: {gpio: 8} },
@@ -118,6 +118,38 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(await visible(page,'savedock'), false);
     assert.equal(calls.filter(c=>c.method==='PUT').length, 1);
     assert.equal(JSON.parse(calls.find(c=>c.method==='PUT').body).hostname, 'updated');
+    await page.close();
+
+    ({page, calls} = await fixture());
+    await page.getByRole('button', {name:'Settings', exact:true}).click();
+    await page.locator('#wiringsection > summary').click();
+    assert.equal(await page.locator('#holdpson').isChecked(), false);
+    await page.locator('#holdpson').check();
+    assert.equal(await visible(page,'savedock'), true);
+    await page.locator('#discardbutton').click();
+    assert.equal(await page.locator('#holdpson').isChecked(), false);
+    await page.locator('#pson').fill('-1');
+    assert.equal(await page.locator('#savebutton').isEnabled(), true, 'button-only startup needs no PS_ON');
+    await page.locator('#holdpson').check();
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'hold requires PS_ON even with button-only startup');
+    await page.locator('#pson').fill('4');
+    assert.equal(await page.locator('#savebutton').isEnabled(), true);
+    await page.setViewportSize({width:320,height:844});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), true);
+    await page.screenshot({path:path.join(__dirname,'../../build/ui-preview/ps-on-hold-mobile.png'),fullPage:true});
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    assert.equal(JSON.parse(calls.find(c=>c.method==='PUT').body).hold_ps_on, true);
+    await page.close();
+
+    ({page, calls} = await fixture({hold_ps_on:true}));
+    assert.equal(await page.locator('#holdpson').isChecked(), true, 'saved hold setting is restored');
+    await page.getByRole('button', {name:'Settings', exact:true}).click();
+    await page.locator('#wiringsection > summary').click();
+    await page.locator('#holdpson').uncheck();
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    assert.equal(JSON.parse(calls.find(c=>c.method==='PUT').body).hold_ps_on, false);
     await page.close();
 
     ({page, calls} = await fixture({radio_profile:'wifi'}));

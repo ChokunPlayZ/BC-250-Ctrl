@@ -33,6 +33,10 @@ ATX GND    ── optocoupler emitter
 
 Use a high-CTR optocoupler that can reliably pull `PS_ON#` low with the selected LED current. Connect the transistor in parallel with the BC-250’s existing isolated hold path. The configured GPIO is normally electrically inactive and is asserted only by the power state machine.
 
+By default, the ESP32 releases PS_ON after power is detected and the handoff delay expires (1 second by default). Enable **Keep PS_ON closed while board power is detected** under **Power wiring & timing** to keep the ESP32 optocoupler conducting as well. This also asserts PS_ON when the board starts externally or is already on when the power service starts. A PS_ON GPIO is required even with the motherboard-switch-only startup method. The setting defaults to off, including when upgrading older saved configurations.
+
+With this option enabled, normal shutdown and force-off still use the motherboard switch. PS_ON stays closed until the filtered power-sense input turns off, including if shutdown times out; it then opens after the configured sense-off filter. Sense must therefore indicate the board's running state, not merely that the PSU has voltage, or the hold could keep itself on. Startup timeout without detected board power still releases PS_ON. ESP32 reset and recovery do not maintain the hold, so keep the board's existing hold path connected.
+
 For the recommended active-high GPIO drive, add a roughly 10 kΩ pulldown from each output GPIO to ESP ground. This keeps both optocoupler LEDs off while the ESP32 is in reset, before firmware configures its pins. If an active-low driver circuit is used instead, bias its input to the electrically inactive high level. Verify the actual dev board's reset/boot behavior with a meter before connecting the BC-250.
 
 ## Motherboard power-button output
