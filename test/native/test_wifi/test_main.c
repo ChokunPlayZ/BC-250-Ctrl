@@ -14,6 +14,8 @@ static TaskFunction_t expire;
 static void *expire_arg;
 static wifi_config_t ap_config, sta_config;
 static const char *scenario;
+static bool pair_test, fail_resume, fail_commission;
+static unsigned commission_calls;
 
 esp_err_t esp_netif_init(void) { return ESP_OK; }
 esp_err_t esp_event_loop_create_default(void) { return ESP_OK; }
@@ -79,9 +81,23 @@ esp_err_t bc250_zigbee_set_config_ap_active(bool active)
     } else {
         ++resume_calls;
         assert(!driver_started || mode != WIFI_MODE_AP);
+        if (fail_resume) { fail_resume = false; return ESP_ERR_INVALID_STATE; }
     }
     zigbee_paused = active;
     return ESP_OK;
+}
+bool bc250_zigbee_is_started(void)
+{
+    return pair_test && !zigbee_paused && strcmp(scenario, "pair_timeout") && elapsed >= 300;
+}
+bool bc250_zigbee_is_joining(void) { return !strcmp(scenario, "pair_joining"); }
+bool bc250_zigbee_is_joined(void) { return !strcmp(scenario, "pair_joined"); }
+esp_err_t bc250_zigbee_commission(void)
+{
+    assert(!driver_started && !bc250_wifi_is_config_ap() && !zigbee_paused);
+    assert(bc250_zigbee_is_started());
+    ++commission_calls;
+    return fail_commission ? ESP_ERR_INVALID_STATE : ESP_OK;
 }
 void bc250_status_led_set_config_mode(bool active) { led_config_mode = active; }
 TickType_t xTaskGetTickCount(void) { return ticks; }
@@ -102,6 +118,13 @@ static void client_event(unsigned count, int event)
 }
 void vTaskDelay(unsigned duration)
 {
+    if (pair_test) {
+        assert(duration == 100 && !driver_started && !bc250_wifi_is_config_ap());
+        ticks += duration; elapsed += duration;
+        assert(elapsed <= 15000);
+        if (!strcmp(scenario, "pair_reopened")) assert(bc250_wifi_open_setup_ap() == ESP_OK);
+        return;
+    }
     assert(duration == 1000);
     assert(++delays <= 2000); /* Connected scenarios must still eventually finish. */
     ticks += duration; elapsed += duration;
@@ -126,6 +149,33 @@ void vTaskDelete(void *task) { (void)task; }
 int main(int argc, char **argv)
 {
     assert(argc == 2); scenario = argv[1];
+    pair_test = !strncmp(scenario, "pair_", 5);
+    if (pair_test) {
+        bc250_config_t config = {
+            .configured = strcmp(scenario, "pair_unconfigured") != 0,
+            .radio_profile = !strcmp(scenario, "pair_wifi") ? BC250_RADIO_WIFI : BC250_RADIO_ZIGBEE,
+        };
+        assert(bc250_wifi_service_start(&config, true) == ESP_OK);
+        stop_failures = !strcmp(scenario, "pair_stop_failure");
+        fail_resume = !strcmp(scenario, "pair_resume_failure");
+        fail_commission = !strcmp(scenario, "pair_queue_failure");
+        bool rejected = !strcmp(scenario, "pair_wifi") || !strcmp(scenario, "pair_unconfigured") ||
+                        !strcmp(scenario, "pair_stop_failure");
+        bool recovered = !strcmp(scenario, "pair_timeout") || !strcmp(scenario, "pair_resume_failure") ||
+                         !strcmp(scenario, "pair_queue_failure") || !strcmp(scenario, "pair_reopened");
+        esp_err_t result = bc250_wifi_pair_zigbee();
+        assert((result == ESP_OK) == !(rejected || recovered));
+        assert(bc250_wifi_is_config_ap() == (rejected || recovered));
+        assert(driver_started == (rejected || recovered));
+        assert(zigbee_paused == (rejected || recovered));
+        unsigned expected = !strcmp(scenario, "pair_ready") || !strcmp(scenario, "pair_queue_failure");
+        assert(commission_calls == expected);
+        if (rejected) assert(elapsed == 0 && resume_calls == 0);
+        if (!strcmp(scenario, "pair_timeout")) assert(elapsed == 15000);
+        if (!rejected && !recovered) assert(bc250_wifi_pair_zigbee() == ESP_ERR_INVALID_STATE);
+        puts("Wi-Fi shutdown, deferred Zigbee pairing, and failure recovery passed");
+        return 0;
+    }
     bool zigbee = strstr(scenario, "zigbee") != NULL || !strcmp(scenario, "retry") ||
                   !strcmp(scenario, "task_failure") || !strcmp(scenario, "stale") ||
                   !strcmp(scenario, "pause_failure") || !strcmp(scenario, "mode_failure") ||

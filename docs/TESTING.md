@@ -32,6 +32,7 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Verify configuration saving and promotion after 30 seconds stay within the serial, HTTP, and health-check task stacks, including with all BLE matcher slots populated.
 - Trigger a controlled panic in a test image and verify the core dump saves successfully using its reserved stack.
 - Reject duplicate, out-of-range, and missing required pins. On C5, reject GPIO 12/14 for every active role and I²C scans through the web UI, API and serial shell, including with the legacy override enabled. On C6, verify these pins retain advisory behavior. Other GPIOs outside the conservative guidance display warnings and save without an override.
+- Verify the web overview starts with settings collapsed and no save bar; first setup opens Network automatically. Edits reveal Save & reboot and Discard. Revert fields or discard edits, including passwords and dynamic button/BLE lists, and verify the bar disappears. Check 320 px and desktop layouts and failed-save retry without losing edits.
 - Edit web inputs without leaving the field: verify blank/fractional/out-of-range numbers, missing required GPIOs or SSIDs, duplicate roles, short admin passwords, and dependent timing errors appear immediately and clear when corrected. GPIO advisories must leave Save enabled when all other fields are valid.
 - Exercise short, double, and long press actions on every configured button.
 - Save a valid pending configuration and verify promotion after 30 seconds.
@@ -43,8 +44,8 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - On each C5 flash layout, flash the full recovery image at 0x0 over USB while active/pending settings and Zigbee state exist. Verify `RECOVERY COMPLETE`, no external GPIO activity, and no AP. Reboot recovery and verify the erase safely repeats. Reflash normal firmware and verify first setup, a fresh admin password, all external GPIOs disabled, and a factory-new Zigbee network. Exercise the 8 MB case with the previous application selected in ota_1; recovery must run from ota_0.
 - Exercise serial status/configuration queries, power commands, BLE/I²C scans, and Zigbee commands in each radio profile. Run `wifi ap` from Wi-Fi station, Zigbee-only, unconfigured, and recovery AP states; verify the first-setup SSID, open authentication, captive DNS, and portal at `http://192.168.4.1/`, including after repeated commands. Leave each AP without connected clients for five minutes and verify it closes. Keep a client connected for more than 15 minutes and verify it remains open; disconnect the last client and verify a fresh five-minute grace period. Repeat with multiple clients, reconnect just before expiry, and verify Wi-Fi station restoration and Zigbee-only Wi-Fi shutdown.
 - In Zigbee-only mode with a configured status LED, open the AP and verify a repeating one-second-on/one-second-off pulse, even while power is on or faulted. Close the AP manually, let it time out, or reboot and verify the normal power-state LED pattern returns.
-- Test the web UI at 320, 390, and 430 px phone widths and desktop width: no horizontal scrolling, visible field labels, large touch controls, collapsible settings, and an accessible fixed Save and reboot bar. Verify changing profiles shows the matching radio fields; hidden-section errors show a count and Show inputs to fix opens/focuses the first invalid field. Add/edit/remove physical buttons and BLE controllers, exercise I²C/BLE scans, and verify the saved request preserves values. Confirm Force off asks before executing, setup AP closure acknowledges before disconnecting, and unavailable factory reset/OTA controls follow device status.
-- In a captive portal browser that suppresses JavaScript dialogs, press Turn off setup AP and verify the confirmation appears inside the page. Keep AP on must cancel without a request. Turn off and disconnect must send one request, disable both confirmation buttons while waiting, and show the closing acknowledgement. Simulate an HTTP error and verify the message appears, the buttons become available for retry, and status updates continue.
+- Test the web UI at 320, 390, and 430 px phone widths and desktop width: no horizontal scrolling, visible field labels, large touch controls, collapsible settings, and an accessible Save & reboot bar only while there are unsaved edits. Verify changing profiles shows the matching radio fields; hidden-section errors show a count and Show inputs to fix opens/focuses the first invalid field. Add/edit/remove physical buttons and BLE controllers, exercise I²C/BLE scans, and verify the saved request preserves values. Confirm Force off asks before executing, setup AP closure acknowledges before disconnecting, and unavailable factory reset/OTA controls follow device status.
+- In a captive portal browser that suppresses JavaScript dialogs, expand Setup Wi-Fi options, press Turn off setup Wi-Fi and verify the confirmation appears inside the page. Cancel must dismiss without a request. Turn off and disconnect must send one request, disable both confirmation buttons while waiting, and show the closing acknowledgement. Simulate an HTTP error and verify the message appears, the buttons become available for retry, and status updates continue.
 - Reset the admin password over serial during an active pending configuration, verify immediate web login with the new password, then force rollback and verify the new password still works.
 - Verify serial oversized commands are rejected and the next command still succeeds.
 - Verify the `bc250>` prompt, echo, cursor editing, backspace/delete, Up/Down history, Tab completion, and Ctrl+C cancellation in an ANSI terminal; verify echo, backspace, and cancellation in a basic terminal.
@@ -65,6 +66,8 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 
 ## Radio interoperability
 
+- On a configured Zigbee setup AP, enable permit-join on the hub, choose Start pairing, cancel once, then confirm Turn off Wi-Fi & pair. Verify one HTTP acknowledgement arrives before Wi-Fi stops and Zigbee starts. The page must stop polling and show reconnect guidance. Wi-Fi mode and unsaved edits cannot start pairing. Verify automatic joining is not duplicated, saved pairing is retained, startup failure reopens setup Wi-Fi, and a newly reopened AP cancels a pending pairing request.
+
 - Confirm Wi-Fi-only and Zigbee-only profiles. Verify that the web UI and serial shell offer only these profiles and that API/serial attempts to select `hybrid` are rejected. Load older active and pending combined-mode settings and verify migration to Zigbee-only without losing other settings or network pairing.
 - After configuring Zigbee and rebooting, run `wifi ap`, join from a phone and computer, and verify DHCP, captive DNS, and portal access. Repeat while joining a Zigbee network and after pairing. Verify the Zigbee stack is fully stopped before the AP starts, remains paused for the AP session, and resumes with the same pairing after manual closure and idle expiry. Repeat rapid close/reopen cycles and triple-reset recovery; configuration and Zigbee commands must remain available over serial after the AP closes.
 - Learn each BLE matcher form. An absent-to-present transition must request power within two seconds of receiving an advertisement; disappearance must never request shutdown.
@@ -80,3 +83,15 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Interrupt an upload and confirm the running slot remains bootable.
 - Reject corrupt or wrong-target images.
 - Boot a deliberately unhealthy image and confirm rollback.
+
+## Browser regression checks
+
+`test/web/test_ui.cjs` uses Node.js and Playwright Chromium with mocked controller responses. Install Playwright in a temporary directory and run:
+
+```sh
+npm install --prefix /tmp/bc250-web-tests playwright
+/tmp/bc250-web-tests/node_modules/.bin/playwright install chromium
+NODE_PATH=/tmp/bc250-web-tests/node_modules node test/web/test_ui.cjs
+```
+
+For an existing compatible Chromium install, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to its executable. Tests cover change tracking, discard/revert, validation, dynamic lists, save failures, pairing confirmation/cancellation/failure, radio-mode gating, intentional disconnects, and mobile overflow. Screenshots are written to `build/ui-preview/`. No device is contacted.

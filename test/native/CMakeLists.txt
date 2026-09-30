@@ -95,6 +95,8 @@ add_executable(bc250_wifi_tests test_wifi/test_main.c ../../src/wifi_service.c)
 target_compile_features(bc250_wifi_tests PRIVATE c_std_11)
 target_compile_options(bc250_wifi_tests PRIVATE -Wall -Wextra -Werror)
 target_include_directories(bc250_wifi_tests PRIVATE test_wifi/include support ../../src)
-foreach(scenario IN ITEMS wifi zigbee first_boot recovery_wifi recovery_zigbee expiry_wifi expiry_zigbee retry connected multiple_clients reconnect query_error repeat wrap stop_failure task_failure stale manual_close pause_failure mode_failure config_failure config_failure_wifi)
+foreach(scenario IN ITEMS wifi zigbee first_boot recovery_wifi recovery_zigbee expiry_wifi expiry_zigbee retry connected multiple_clients reconnect query_error repeat wrap stop_failure task_failure stale manual_close pause_failure mode_failure config_failure config_failure_wifi
+                          pair_ready pair_joining pair_joined pair_wifi pair_unconfigured pair_stop_failure
+                          pair_resume_failure pair_timeout pair_queue_failure pair_reopened)
     add_test(NAME bc250_wifi_${scenario} COMMAND bc250_wifi_tests ${scenario})
 endforeach()

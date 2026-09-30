@@ -125,7 +125,7 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
             return ESP_ERR_INVALID_ARG;
         }
         if (config->power_button.gpio == BC250_GPIO_DISABLED) {
-            snprintf(error, error_size, "power-button GPIO is required for shutdown");
+            snprintf(error, error_size, "motherboard switch output GPIO is required for shutdown");
             return ESP_ERR_INVALID_ARG;
         }
         if (config->radio_profile == BC250_RADIO_WIFI && config->wifi_ssid[0] == '\0') {
@@ -164,7 +164,7 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
     }
     const struct { int gpio; const char *name; } fixed[] = {
         {config->ps_on.gpio, "PS_ON"},
-        {config->power_button.gpio, "power button"},
+        {config->power_button.gpio, "motherboard switch output"},
         {config->power_sense.gpio, "power sense"},
         {config->status_led.gpio, "status LED"},
         {config->psu_i2c.enabled ? config->psu_i2c.sda_gpio : BC250_GPIO_DISABLED, "PSU SDA"},

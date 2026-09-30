@@ -14,6 +14,7 @@
 
 #define ESP_ERR_INVALID_STATE 0x103
 #define ESP_ERR_NO_MEM 0x101
+#define ESP_ERR_TIMEOUT 0x107
 #define ESP_RETURN_ON_ERROR(call, tag, ...) do { \
     (void)(tag); esp_err_t result = (call); if (result != ESP_OK) return result; \
 } while (0)

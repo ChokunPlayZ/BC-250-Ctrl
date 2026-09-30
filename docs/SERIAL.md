@@ -77,14 +77,18 @@ config
 save
 ```
 
-These pin numbers are examples; choose pins for your board and wiring. `radio` is a short alias for `radio_profile`. The `pins.` prefix is optional for GPIO roles, so `set pins.ps_on.gpio 4` also works. Startup strategies are `ps_on_only`, `button_only`, `ps_on_then_button`, and `simultaneous`. An empty `wifi_password` clears the credential in the shell.
+These pin numbers are examples; choose pins for your board and wiring. `power_button.gpio` is the **motherboard power-switch output**, which drives the optocoupler at the motherboard header; it does not read a physical pushbutton. `radio` is a short alias for `radio_profile`. The `pins.` prefix is optional for GPIO roles, so `set pins.ps_on.gpio 4` also works. Startup strategies are `ps_on_only`, `button_only`, `ps_on_then_button`, and `simultaneous`. An empty `wifi_password` clears the credential in the shell.
 
-Buttons and BLE matchers use zero-based slots. Set `button_count` or `ble_device_count` to include the slots you want, then edit their fields:
+All physical buttons, including power and auxiliary buttons, use the custom `buttons` slots. For a switch from GPIO to ESP ground, set `active_high off` and `pull_up on` to use the ESP internal pull-up without an external resistor. Buttons and BLE matchers use zero-based slots. Set `button_count` or `ble_device_count` to include the slots you want, then edit their fields:
 
 ```text
 set button_count 1
 set buttons.0.gpio 23
+set buttons.0.active_high off
+set buttons.0.pull_up on
 set buttons.0.short_action toggle
+set buttons.0.double_action none
+set buttons.0.long_action force_off
 set buttons.0.enabled on
 set ble_device_count 1
 set ble_devices.0.label "My phone"

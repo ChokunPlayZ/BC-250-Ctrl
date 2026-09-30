@@ -28,6 +28,8 @@ static const char *TAG = "web";
 static httpd_handle_t s_server;
 static portMUX_TYPE s_events_lock = portMUX_INITIALIZER_UNLOCKED;
 static unsigned s_event_clients;
+static portMUX_TYPE s_radio_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool s_radio_busy;
 
 extern const char INDEX_HTML[] asm("_binary_web_ui_html_start");
 
@@ -120,28 +122,52 @@ static esp_err_t psu_data_handler(httpd_req_t *request)
     return err;
 }
 
-static void close_ap_task(void *arg)
+static void radio_action_task(void *arg)
 {
-    (void)arg;
-    /* Allow the HTTP acknowledgement to reach the connected phone first. */
-    vTaskDelay(pdMS_TO_TICKS(750));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_wifi_close_config_ap());
+    /* The handler releases us only after sending the acknowledgement. */
+    if (ulTaskNotifyTake(pdTRUE, portMAX_DELAY) == 1) {
+        vTaskDelay(pdMS_TO_TICKS(750));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(arg != NULL ? bc250_wifi_pair_zigbee() : bc250_wifi_close_config_ap());
+    }
+    portENTER_CRITICAL(&s_radio_lock);
+    s_radio_busy = false;
+    portEXIT_CRITICAL(&s_radio_lock);
     vTaskDelete(NULL);
+}
+
+static esp_err_t schedule_radio_action(httpd_req_t *request, bool pairing)
+{
+    if (!bc250_wifi_is_config_ap()) {
+        httpd_resp_set_status(request, "409 Conflict");
+        return httpd_resp_sendstr(request, "Configuration AP is already off");
+    }
+    portENTER_CRITICAL(&s_radio_lock);
+    bool busy = s_radio_busy;
+    if (!busy) s_radio_busy = true;
+    portEXIT_CRITICAL(&s_radio_lock);
+    if (busy) {
+        httpd_resp_set_status(request, "409 Conflict");
+        return httpd_resp_sendstr(request, "Radio change already in progress");
+    }
+    TaskHandle_t task = NULL;
+    if (xTaskCreate(radio_action_task, "web_radio", 4096, pairing ? (void *)1 : NULL, 2, &task) != pdPASS) {
+        portENTER_CRITICAL(&s_radio_lock);
+        s_radio_busy = false;
+        portEXIT_CRITICAL(&s_radio_lock);
+        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Unable to start radio change");
+    }
+    httpd_resp_set_status(request, "202 Accepted");
+    httpd_resp_set_type(request, "application/json");
+    esp_err_t err = httpd_resp_sendstr(request, pairing ? "{\"accepted\":true,\"disconnecting\":true}" : "{\"accepted\":true}");
+    /* A failed response cancels the operation, keeping the portal accessible. */
+    xTaskNotify(task, err == ESP_OK ? 1 : 2, eSetValueWithOverwrite);
+    return err;
 }
 
 static esp_err_t close_ap_handler(httpd_req_t *request)
 {
     if (!require_auth(request)) return ESP_OK;
-    if (!bc250_wifi_is_config_ap()) {
-        httpd_resp_set_status(request, "409 Conflict");
-        return httpd_resp_sendstr(request, "Configuration AP is already off");
-    }
-    if (xTaskCreate(close_ap_task, "close_ap", 3072, NULL, 2, NULL) != pdPASS) {
-        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Unable to close AP");
-    }
-    httpd_resp_set_status(request, "202 Accepted");
-    httpd_resp_set_type(request, "application/json");
-    return httpd_resp_sendstr(request, "{\"accepted\":true}");
+    return schedule_radio_action(request, false);
 }
 
 static esp_err_t receive_body(httpd_req_t *request, char **body, size_t maximum)
@@ -339,6 +365,16 @@ static esp_err_t zigbee_handler(httpd_req_t *request)
     cJSON *json = cJSON_Parse(body);
     free(body);
     cJSON *action = json ? cJSON_GetObjectItemCaseSensitive(json, "action") : NULL;
+    bool commission = cJSON_IsString(action) && strcmp(action->valuestring, "commission") == 0;
+    if (commission && bc250_wifi_is_config_ap()) {
+        cJSON_Delete(json);
+        const bc250_config_t *config = bc250_config_get();
+        if (!config->configured || config->radio_profile != BC250_RADIO_ZIGBEE) {
+            httpd_resp_set_status(request, "409 Conflict");
+            return httpd_resp_sendstr(request, "Save Zigbee mode and finish setup before pairing");
+        }
+        return schedule_radio_action(request, true);
+    }
     esp_err_t err = ESP_ERR_INVALID_ARG;
     if (cJSON_IsString(action)) {
         if (strcmp(action->valuestring, "commission") == 0) err = bc250_zigbee_commission();

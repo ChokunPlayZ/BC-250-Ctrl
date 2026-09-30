@@ -60,7 +60,9 @@ Streams server-sent `status` events when the state or optocoupled sense changes,
 
 ### `POST /api/v1/zigbee`
 
-This endpoint returns `409 Conflict` when Zigbee is unavailable. Zigbee is paused throughout setup AP sessions, and Wi-Fi-only mode does not run Zigbee. Use serial `zigbee commission` or `zigbee reset` after closing the AP for manual joining or resetting only Zigbee network state.
+Send `{"action":"commission"}` to start pairing. On the setup AP, this requires a saved, configured Zigbee profile. It returns `202 Accepted` with `{"accepted":true,"disconnecting":true}`, then closes Wi-Fi and waits up to 15 seconds for Zigbee initialization before requesting joining. Factory-new automatic joining is not duplicated, and an existing joined network is preserved. Follow the result on the coordinator or serial shell; the HTTP acknowledgement does not mean pairing has completed. If initialization or queueing fails, the controller attempts to reopen setup Wi-Fi.
+
+Wi-Fi mode, incomplete setup, or another pending radio change returns `409 Conflict` without closing Wi-Fi. Without the AP, commissioning still requires Zigbee to be running. `{"action":"reset"}` retains the existing behavior: Zigbee must be running, so use serial `zigbee reset` after closing the AP to clear only the Zigbee network.
 
 ### Zigbee PSU telemetry
 

@@ -37,6 +37,8 @@ For the recommended active-high GPIO drive, add a roughly 10 kΩ pulldown from e
 
 ## Motherboard power-button output
 
+Set **Motherboard power-switch output GPIO** in **Power wiring & timing** to the GPIO driving the second optocoupler. This is an output used to start, shut down, or force off the motherboard. Configure all physical pushbuttons separately under **Custom buttons**.
+
 Place a second optocoupler transistor across the motherboard switch signal and its ground return. Identify the signal and return with a meter before wiring. If the header is not a ground-referenced active-low input, use an optically isolated PhotoMOS contact instead.
 
 Never connect an ESP GPIO directly to the motherboard switch signal.
@@ -69,9 +71,9 @@ Connect each normally open, momentary pushbutton between its own configured ESP3
 ESP GPIO ── pushbutton ── ESP GND
 ```
 
-In **Physical buttons** in the web interface, set that button's GPIO, leave **active high** unchecked, and leave **pull-up** checked. The firmware enables the GPIO's internal pull-up, so an unpressed button reads high and a press pulls it low. No external resistor is required for this local connection. If using a four-leg tactile switch, check which legs are internally joined so the GPIO and ground are on opposite sides of the switch. Assign short, double, and long press actions as desired; each button needs a different GPIO.
+Add every physical button, including power and auxiliary buttons, under **Custom buttons** in the web interface. Set each button's GPIO, leave **Active high** unchecked, and leave **Internal pull-up** checked. The firmware enables the GPIO's internal pull-up, so an unpressed button reads high and a press pulls it low. No external resistor is required for this local connection. If using a four-leg tactile switch, check which legs are internally joined so the GPIO and ground are on opposite sides of the switch. Assign short, double, and long press actions as desired; each button needs a different GPIO.
 
-An active-high alternative is a switch from GPIO to **ESP 3.3 V**. For that circuit, check **active high** and uncheck **pull-up** (the firmware enables an internal pull-down). Never apply 5 V to an ESP32 GPIO. Isolate any signal coming from another powered system.
+An active-high alternative is a switch from GPIO to **ESP 3.3 V**. For that circuit, check **active high** and uncheck **Internal pull-up** (the firmware enables an internal pull-down). Never apply 5 V to an ESP32 GPIO. Isolate any signal coming from another powered system.
 
 ### Controller status LED
 

@@ -39,15 +39,17 @@ The channel setting does not change the coordinator's network channel or move a 
 
 ### Close the setup AP
 
-**Zigbee is paused for the entire setup AP session.** In the portal, select **Turn off setup AP** and confirm **Turn off and disconnect**, or disconnect every Wi-Fi client and wait for the five-minute idle timeout. A connected client keeps the AP open. After it closes, Wi-Fi stops in Zigbee mode and the router resumes with its saved network data. BLE scanning and the serial shell remain available.
+**Zigbee is paused for the entire setup AP session.** In the portal, expand **Setup Wi-Fi options**, select **Turn off setup Wi-Fi** and confirm **Turn off and disconnect**, or disconnect every Wi-Fi client and wait for the five-minute idle timeout. A connected client keeps the AP open. After it closes, Wi-Fi stops in Zigbee mode and the router resumes with its saved network data. BLE scanning and the serial shell remain available.
 
-The HTTP Zigbee endpoint cannot commission the router while the AP is open; it returns `409 Conflict`. Manual joining and network reset use serial commands or configured local buttons with the AP closed. A successful 30-second configuration health check does not prove Zigbee has joined.
+For manual pairing from the portal, use **Start pairing** on the overview, then **Turn off Wi-Fi & pair**. Save or discard pending edits first. The controller acknowledges the request before disconnecting the page, closes Wi-Fi, and waits for Zigbee to initialize. If startup fails, it attempts to reopen setup Wi-Fi. Pairing progress appears on the coordinator and serial shell. An existing saved network is preserved; this button does not reset pairing.
+
+Network reset still uses serial commands or a configured local button with the AP closed. A successful 30-second configuration health check does not prove Zigbee has joined.
 
 ## Pairing and network recovery
 
 1. Enable **permit join / add device** on the coordinator.
-2. Close the controller's setup AP. A factory-new Zigbee stack starts joining automatically when it starts.
-3. If that attempt already failed, enter `zigbee commission` in the serial shell. This retries network steering without erasing controller settings.
+2. In the portal, select **Start pairing**, then **Turn off Wi-Fi & pair**. Wi-Fi closes and the page disconnects. A factory-new Zigbee stack also starts joining automatically whenever it starts.
+3. To retry, reopen setup Wi-Fi with a configured button or `wifi ap` and use **Start pairing**, or enter `zigbee commission` with the AP closed. This preserves controller settings.
 4. Watch the shell for `Zigbee: joined network.` and run `status`. Its Zigbee line should show `joined`. A configured status LED flashes twice per second while joining; messages still appear with `logs off`.
 5. Wait for the coordinator's interview/configuration to finish. Test On and Off and compare the displayed state with the hardware sense and serial `status`.
 

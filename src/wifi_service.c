@@ -292,6 +292,37 @@ bool bc250_wifi_is_config_ap(void)
     return s_config_ap;
 }
 
+esp_err_t bc250_wifi_pair_zigbee(void)
+{
+    if (!s_config.configured || s_config.radio_profile != BC250_RADIO_ZIGBEE || !s_config_ap) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    uint32_t generation = s_ap_generation;
+    esp_err_t err = bc250_wifi_close_config_ap();
+    if (err == ESP_OK) {
+        TickType_t started = xTaskGetTickCount();
+        while (!bc250_zigbee_is_started()) {
+            /* A newly opened portal supersedes this request. */
+            if (s_config_ap || generation != s_ap_generation) return ESP_ERR_INVALID_STATE;
+            if ((TickType_t)(xTaskGetTickCount() - started) >= pdMS_TO_TICKS(15000)) {
+                err = ESP_ERR_TIMEOUT;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (s_config_ap || generation != s_ap_generation) return ESP_ERR_INVALID_STATE;
+        /* Factory-new stacks already start steering during initialization. */
+        if (err == ESP_OK && !bc250_zigbee_is_joining() && !bc250_zigbee_is_joined()) {
+            err = bc250_zigbee_commission();
+        }
+    }
+    if (err != ESP_OK && !s_config_ap && generation == s_ap_generation) {
+        ESP_LOGW(TAG, "Pairing could not start (%s); reopening setup AP", esp_err_to_name(err));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_wifi_open_setup_ap());
+    }
+    return err;
+}
+
 bool bc250_wifi_is_connected(void)
 {
     return s_connected;
