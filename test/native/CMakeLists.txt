@@ -30,7 +30,7 @@ target_compile_options(bc250_shell_tests PRIVATE -Wall -Wextra -Werror)
 target_include_directories(bc250_shell_tests PRIVATE support ../../src ../../src/core)
 add_test(NAME bc250_shell_tests COMMAND bc250_shell_tests)
 
-foreach(target IN ITEMS ESP32C5 ESP32C6)
+foreach(target IN ITEMS ESP32 ESP32S3 ESP32C3 ESP32C5 ESP32C6 ESP32C61 ESP32H2 ESP32H21 ESP32H4)
     add_executable(bc250_config_tests_${target}
         test_config/test_main.c
         ../../src/config_validation.c

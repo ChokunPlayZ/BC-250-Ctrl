@@ -4,8 +4,8 @@ On the NodeMCU ESP32-C5 Mini, do not assign GPIO 12 or 14: saved assignments hav
 
 ## Required parts
 
-- ESP32-C5 or ESP32-C6 development board with adequate exposed GPIOs
-- Three high-CTR phototransistor optocouplers for PS_ON, power-button, and power sensing
+- A supported ESP32, S3, C3, C5, C6, C61, H2, H21, or H4 board with adequate exposed GPIOs and the correct flash profile. H boards use serial setup and native Zigbee because they have no Wi-Fi.
+- Up to three high-CTR phototransistor optocouplers for PS_ON, power-button, and power sensing; PS_ON latch mode only needs the PS_ON output
 - 430 Ω resistors for 3.3 V-driven optocoupler LEDs
 - External roughly 10 kΩ inactive-state bias resistors for both output GPIOs
 - Power-sense resistor selected for the measured LED voltage
@@ -33,7 +33,9 @@ ATX GND    ── optocoupler emitter
 
 Use a high-CTR optocoupler that can reliably pull `PS_ON#` low with the selected LED current. Connect the transistor in parallel with the BC-250’s existing isolated hold path. The configured GPIO is normally electrically inactive and is asserted only by the power state machine.
 
-By default, the ESP32 releases PS_ON after power is detected and the handoff delay expires (1 second by default). Enable **Keep PS_ON closed while board power is detected** under **Power wiring & timing** to keep the ESP32 optocoupler conducting as well. This also asserts PS_ON when the board starts externally or is already on when the power service starts. A PS_ON GPIO is required even with the motherboard-switch-only startup method. The setting defaults to off, including when upgrading older saved configurations.
+In the sensed startup methods, the ESP32 releases PS_ON after power is detected and the handoff delay expires (1 second by default). Enable **Keep PS_ON closed while board power is detected** under **Power wiring & timing** to keep the ESP32 optocoupler conducting as well. This also asserts PS_ON when the board starts externally or is already on when the power service starts. A PS_ON GPIO is required even with the motherboard-switch-only startup method. The setting defaults to off, including when upgrading older saved configurations.
+
+Select **PS_ON latch (no power sense)** to close PS_ON on an On or Toggle command and keep it closed until an Off or another Toggle command. This mode does not read power sense or use the motherboard switch output; set those GPIOs to `-1` if unwired. Configure a controller-side physical button's short press as **Toggle** under Custom buttons, or use Zigbee On/Off. Opening PS_ON removes power immediately, so the operating system does not get a graceful shutdown. The controller starts with PS_ON open after reset or power loss and cannot detect power changes made outside the controller.
 
 With this option enabled, normal shutdown and force-off still use the motherboard switch. PS_ON stays closed until the filtered power-sense input turns off, including if shutdown times out; it then opens after the configured sense-off filter. Sense must therefore indicate the board's running state, not merely that the PSU has voltage, or the hold could keep itself on. Startup timeout without detected board power still releases PS_ON. ESP32 reset and recovery do not maintain the hold, so keep the board's existing hold path connected.
 
@@ -75,7 +77,7 @@ Connect each normally open, momentary pushbutton between its own configured ESP3
 ESP GPIO ── pushbutton ── ESP GND
 ```
 
-Add every physical button, including power and auxiliary buttons, under **Custom buttons** in the web interface. Set each button's GPIO, leave **Active high** unchecked, and leave **Internal pull-up** checked. The firmware enables the GPIO's internal pull-up, so an unpressed button reads high and a press pulls it low. No external resistor is required for this local connection. If using a four-leg tactile switch, check which legs are internally joined so the GPIO and ground are on opposite sides of the switch. Assign short, double, and long press actions as desired; each button needs a different GPIO.
+Add every physical button, including power and auxiliary buttons, under **Custom buttons** in the web interface on Wi-Fi targets, or configure it through the serial shell on ESP32-H. Set each button's GPIO, leave **Active high** unchecked, and leave **Internal pull-up** checked. The firmware enables the GPIO's internal pull-up, so an unpressed button reads high and a press pulls it low. No external resistor is required for this local connection. If using a four-leg tactile switch, check which legs are internally joined so the GPIO and ground are on opposite sides of the switch. Assign short, double, and long press actions as desired; each button needs a different GPIO.
 
 An active-high alternative is a switch from GPIO to **ESP 3.3 V**. For that circuit, check **active high** and uncheck **Internal pull-up** (the firmware enables an internal pull-down). Never apply 5 V to an ESP32 GPIO. Isolate any signal coming from another powered system.
 

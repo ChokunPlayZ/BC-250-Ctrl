@@ -1,9 +1,11 @@
 #include "config_store.h"
 
 #include <stdio.h>
+#include "target_caps.h"
 
 #ifdef ESP_PLATFORM
 #include "sdkconfig.h"
+#include "driver/gpio.h"
 #endif
 
 bool bc250_config_migrate_legacy_profile(bc250_config_t *config)
@@ -37,7 +39,7 @@ bool bc250_config_pin_is_safe(int gpio)
 #elif CONFIG_IDF_TARGET_ESP32C6
     static const uint8_t safe[] = {0, 1, 2, 3, 6, 7, 10, 11, 18, 19, 20, 21, 22, 23};
 #else
-    static const uint8_t safe[] = {0};
+    static const uint8_t safe[] = {255}; /* Board-dependent: no generic recommendation. */
 #endif
     for (size_t i = 0; i < sizeof(safe); ++i) {
         if (gpio == safe[i]) return true;
@@ -56,14 +58,35 @@ bool bc250_config_pin_is_blocked(int gpio)
 #endif
 }
 
-static esp_err_t validate_one_pin(int gpio,
+static esp_err_t validate_one_pin(int gpio, bool output,
                                   const char *name, char *error, size_t error_size)
 {
     if (gpio == BC250_GPIO_DISABLED) return ESP_OK;
-    if (gpio < 0 || gpio > 31) {
+    if (gpio < 0 || gpio > BC250_GPIO_MAX) {
         snprintf(error, error_size, "%s GPIO is outside the supported range", name);
         return ESP_ERR_INVALID_ARG;
     }
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    /* GPIO34-39 have no internal pulls; input_service always configures one. */
+    if (gpio >= 34) {
+        snprintf(error, error_size, "%s GPIO %d has no internal pull support on classic ESP32", name, gpio);
+        return ESP_ERR_INVALID_ARG;
+    }
+#endif
+#ifdef ESP_PLATFORM
+    if (!(output ? GPIO_IS_VALID_OUTPUT_GPIO(gpio) : GPIO_IS_VALID_GPIO(gpio))) {
+        snprintf(error, error_size, "%s GPIO %d is unavailable for this role on this ESP32 target", name, gpio);
+        return ESP_ERR_INVALID_ARG;
+    }
+#else
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    if ((gpio >= 24 && gpio <= 31) || gpio > 39) {
+        snprintf(error, error_size, "%s GPIO %d is unavailable for this role on this ESP32 target", name, gpio);
+        return ESP_ERR_INVALID_ARG;
+    }
+#endif
+    (void)output;
+#endif
     if (bc250_config_pin_is_blocked(gpio)) {
         snprintf(error, error_size,
                  "%s GPIO %d is unavailable on ESP32-C5: NodeMCU C5 Mini boot failure",
@@ -82,8 +105,8 @@ esp_err_t bc250_config_validate_i2c_pins(const bc250_config_t *config, int sda_g
         snprintf(error, error_size, "I2C requires distinct SDA and SCL GPIOs");
         return ESP_ERR_INVALID_ARG;
     }
-    if (validate_one_pin(sda_gpio, "I2C SDA", error, error_size) != ESP_OK ||
-        validate_one_pin(scl_gpio, "I2C SCL", error, error_size) != ESP_OK) {
+    if (validate_one_pin(sda_gpio, true, "I2C SDA", error, error_size) != ESP_OK ||
+        validate_one_pin(scl_gpio, true, "I2C SCL", error, error_size) != ESP_OK) {
         return ESP_ERR_INVALID_ARG;
     }
     // The active I2C pins may be scanned; all other configured GPIO roles are excluded.
@@ -104,27 +127,32 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         snprintf(error, error_size, "unsupported configuration schema");
         return ESP_ERR_INVALID_VERSION;
     }
-    if (config->radio_profile != BC250_RADIO_WIFI && config->radio_profile != BC250_RADIO_ZIGBEE) {
-        snprintf(error, error_size, "invalid radio profile");
+    if ((config->radio_profile == BC250_RADIO_WIFI && !BC250_HAS_WIFI) ||
+        (config->radio_profile == BC250_RADIO_ZIGBEE && !BC250_HAS_ZIGBEE) ||
+        (config->radio_profile != BC250_RADIO_WIFI && config->radio_profile != BC250_RADIO_ZIGBEE)) {
+        snprintf(error, error_size, "radio profile unavailable on this ESP32 target");
         return ESP_ERR_INVALID_ARG;
     }
-    if (config->timing.strategy > BC250_START_SIMULTANEOUS) {
+    if (config->timing.strategy > BC250_START_PS_ON_LATCHED) {
         snprintf(error, error_size, "invalid start strategy");
         return ESP_ERR_INVALID_ARG;
     }
     if (config->configured) {
-        if (config->power_sense.gpio == BC250_GPIO_DISABLED) {
+        if (config->timing.strategy != BC250_START_PS_ON_LATCHED &&
+            config->power_sense.gpio == BC250_GPIO_DISABLED) {
             snprintf(error, error_size, "power LED sense GPIO is required");
             return ESP_ERR_INVALID_ARG;
         }
-        if ((config->timing.strategy == BC250_START_PS_ON_ONLY ||
+        if ((config->timing.strategy == BC250_START_PS_ON_LATCHED ||
+             config->timing.strategy == BC250_START_PS_ON_ONLY ||
              config->timing.strategy == BC250_START_PS_ON_THEN_BUTTON ||
              config->timing.strategy == BC250_START_SIMULTANEOUS || config->hold_ps_on) &&
             config->ps_on.gpio == BC250_GPIO_DISABLED) {
             snprintf(error, error_size, "selected start strategy or PS_ON hold requires PS_ON GPIO");
             return ESP_ERR_INVALID_ARG;
         }
-        if (config->power_button.gpio == BC250_GPIO_DISABLED) {
+        if (config->timing.strategy != BC250_START_PS_ON_LATCHED &&
+            config->power_button.gpio == BC250_GPIO_DISABLED) {
             snprintf(error, error_size, "motherboard switch output GPIO is required for shutdown");
             return ESP_ERR_INVALID_ARG;
         }
@@ -162,16 +190,16 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         snprintf(error, error_size, "enabled PSU I2C requires SDA and SCL GPIOs");
         return ESP_ERR_INVALID_ARG;
     }
-    const struct { int gpio; const char *name; } fixed[] = {
-        {config->ps_on.gpio, "PS_ON"},
-        {config->power_button.gpio, "motherboard switch output"},
-        {config->power_sense.gpio, "power sense"},
-        {config->status_led.gpio, "status LED"},
-        {config->psu_i2c.enabled ? config->psu_i2c.sda_gpio : BC250_GPIO_DISABLED, "PSU SDA"},
-        {config->psu_i2c.enabled ? config->psu_i2c.scl_gpio : BC250_GPIO_DISABLED, "PSU SCL"},
+    const struct { int gpio; bool output; const char *name; } fixed[] = {
+        {config->ps_on.gpio, true, "PS_ON"},
+        {config->power_button.gpio, true, "motherboard switch output"},
+        {config->power_sense.gpio, false, "power sense"},
+        {config->status_led.gpio, true, "status LED"},
+        {config->psu_i2c.enabled ? config->psu_i2c.sda_gpio : BC250_GPIO_DISABLED, true, "PSU SDA"},
+        {config->psu_i2c.enabled ? config->psu_i2c.scl_gpio : BC250_GPIO_DISABLED, true, "PSU SCL"},
     };
     for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i) {
-        if (validate_one_pin(fixed[i].gpio, fixed[i].name, error, error_size) != ESP_OK) {
+        if (validate_one_pin(fixed[i].gpio, fixed[i].output, fixed[i].name, error, error_size) != ESP_OK) {
             return ESP_ERR_INVALID_ARG;
         }
         if (fixed[i].gpio < 0) continue;
@@ -186,12 +214,23 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
     for (int i = 0; i < config->button_count; ++i) {
         const bc250_button_config_t *button = &config->buttons[i];
         if (!button->enabled) continue;
-        if (validate_one_pin(button->input.gpio, "input button", error, error_size) != ESP_OK) {
+        if (validate_one_pin(button->input.gpio, false, "input button", error, error_size) != ESP_OK) {
             return ESP_ERR_INVALID_ARG;
         }
         if (button->input.gpio < 0 || pin_in_use(config, button->input.gpio, i)) {
             snprintf(error, error_size, "button %d uses a disabled or duplicate GPIO", i);
             return ESP_ERR_INVALID_ARG;
+        }
+        const bc250_button_action_t actions[] = {
+            button->short_action, button->double_action, button->long_action,
+        };
+        for (size_t action = 0; action < sizeof(actions) / sizeof(actions[0]); ++action) {
+            if ((actions[action] == BC250_BUTTON_ACTION_CONFIG_AP && !BC250_HAS_WIFI) ||
+                ((actions[action] == BC250_BUTTON_ACTION_ZIGBEE_COMMISSION ||
+                  actions[action] == BC250_BUTTON_ACTION_ZIGBEE_RESET) && !BC250_HAS_ZIGBEE)) {
+                snprintf(error, error_size, "button %d action is unavailable on this ESP32 target", i);
+                return ESP_ERR_INVALID_ARG;
+            }
         }
         if (button->input.debounce_ms == 0 || button->double_press_ms == 0 ||
             button->long_press_ms <= button->input.debounce_ms) {
@@ -220,21 +259,21 @@ bool bc250_config_pin_warnings(const bc250_config_t *config, char *warning, size
 {
     if (config == NULL || warning == NULL || size == 0) return false;
     warning[0] = '\0';
-    uint32_t pins = 0;
+    uint64_t pins = 0;
     const int fixed[] = {config->ps_on.gpio, config->power_button.gpio,
                          config->power_sense.gpio, config->status_led.gpio,
                          config->psu_i2c.enabled ? config->psu_i2c.sda_gpio : -1,
                          config->psu_i2c.enabled ? config->psu_i2c.scl_gpio : -1};
     for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i) {
-        if (fixed[i] >= 0 && fixed[i] <= 31) pins |= UINT32_C(1) << fixed[i];
+        if (fixed[i] >= 0 && fixed[i] <= BC250_GPIO_MAX) pins |= UINT64_C(1) << fixed[i];
     }
     for (int i = 0; i < config->button_count && i < BC250_MAX_BUTTONS; ++i) {
         int gpio = config->buttons[i].input.gpio;
-        if (config->buttons[i].enabled && gpio >= 0 && gpio <= 31) pins |= UINT32_C(1) << gpio;
+        if (config->buttons[i].enabled && gpio >= 0 && gpio <= BC250_GPIO_MAX) pins |= UINT64_C(1) << gpio;
     }
     size_t used = 0;
-    for (int gpio = 0; gpio <= 31; ++gpio) {
-        if (!(pins & (UINT32_C(1) << gpio)) || bc250_config_pin_is_safe(gpio) ||
+    for (int gpio = 0; gpio <= BC250_GPIO_MAX; ++gpio) {
+        if (!(pins & (UINT64_C(1) << gpio)) || bc250_config_pin_is_safe(gpio) ||
             bc250_config_pin_is_blocked(gpio)) continue;
         int written = snprintf(warning + used, size - used, "%s%d", used ? ", " : "GPIOs ", gpio);
         if (written < 0 || (size_t)written >= size - used) return true;

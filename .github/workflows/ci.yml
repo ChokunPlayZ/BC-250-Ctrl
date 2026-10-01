@@ -37,6 +37,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - profile: esp32_4mb
+            target: esp32
+            idf: v6.1
+            partitions: partitions_4mb.csv
+          - profile: esp32s3_4mb
+            target: esp32s3
+            idf: v6.1
+            partitions: partitions_4mb.csv
+          - profile: esp32c3_4mb
+            target: esp32c3
+            idf: v5.5.4
+            partitions: partitions_4mb.csv
           - profile: esp32c5_4mb
             target: esp32c5
             idf: v5.5.4
@@ -53,6 +65,22 @@ jobs:
             target: esp32c6
             idf: v6.0.1
             partitions: partitions_8mb.csv
+          - profile: esp32c61_4mb
+            target: esp32c61
+            idf: v5.5.4
+            partitions: partitions_4mb.csv
+          - profile: esp32h2_4mb
+            target: esp32h2
+            idf: v5.5.4
+            partitions: partitions_4mb.csv
+          - profile: esp32h21_4mb
+            target: esp32h21
+            idf: v6.1
+            partitions: partitions_4mb.csv
+          - profile: esp32h4_4mb
+            target: esp32h4
+            idf: v6.1
+            partitions: partitions_4mb.csv
     steps:
       - uses: actions/checkout@v4
       - name: Build ${{ matrix.profile }} with ESP-IDF

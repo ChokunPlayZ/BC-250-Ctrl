@@ -261,6 +261,30 @@ static void test_ps_on_hold_start_interrupted(void)
     assert(p.outputs.ps_on && !p.outputs.power_button);
 }
 
+static void test_ps_on_latched_without_sense(void)
+{
+    bc250_power_logic_t p;
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    timing.strategy = BC250_START_PS_ON_LATCHED;
+    bc250_power_logic_init(&p, &timing, true, true, 0);
+    assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_TOGGLE, false, 1));
+    assert(p.state == BC250_POWER_ON && p.outputs.ps_on && !p.outputs.power_button);
+    bc250_power_tick(&p, false, timing.start_timeout_ms + 2);
+    bc250_power_tick(&p, true, timing.start_timeout_ms + 3);
+    assert(p.state == BC250_POWER_ON && p.outputs.ps_on);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 20000));
+    assert(p.state == BC250_POWER_ON && p.outputs.ps_on);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_TOGGLE, false, 20001));
+    assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, true, 20002));
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, true, 20003));
+    assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on);
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 20004));
+    assert(bc250_power_request(&p, BC250_POWER_ACTION_FORCE_OFF, false, 20005));
+    assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+}
+
 static void test_button_gestures(void)
 {
     bc250_button_logic_t button;
@@ -338,6 +362,7 @@ int main(void)
     test_ps_on_hold_start_strategies();
     test_ps_on_hold_shutdown();
     test_ps_on_hold_start_interrupted();
+    test_ps_on_latched_without_sense();
     test_button_gestures();
     test_presence_deduplication();
     test_ble_matchers();

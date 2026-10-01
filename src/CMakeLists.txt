@@ -1,3 +1,23 @@
+set(bc250_supported_targets esp32 esp32s3 esp32c3 esp32c5 esp32c6 esp32c61 esp32h2 esp32h21 esp32h4)
+if(NOT IDF_TARGET IN_LIST bc250_supported_targets)
+    message(FATAL_ERROR "BC-250 requires a supported BLE-capable ESP32 target, got ${IDF_TARGET}")
+endif()
+
+if(IDF_TARGET MATCHES "^(esp32c5|esp32c6|esp32h2|esp32h21|esp32h4)$")
+    set(radio_sources "zigbee_runtime.c" "zigbee_service.c")
+    set(radio_requires esp-zigbee-lib)
+else()
+    set(radio_sources "zigbee_service_stub.c")
+endif()
+
+if(IDF_TARGET MATCHES "^(esp32h2|esp32h21|esp32h4)$")
+    set(network_sources "wifi_service_stub.c")
+    set(network_requires)
+else()
+    set(network_sources "wifi_service.c" "web_server.c")
+    set(network_requires esp_http_server esp_netif esp_wifi lwip)
+endif()
+
 idf_component_register(
     SRCS
         "app_main.c"
@@ -15,10 +35,8 @@ idf_component_register(
         "serial_service.c"
         "status_service.c"
         "status_led.c"
-        "web_server.c"
-        "wifi_service.c"
-        "zigbee_runtime.c"
-        "zigbee_service.c"
+        ${network_sources}
+        ${radio_sources}
         "core/ble_match.c"
         "core/button_logic.c"
         "core/power_logic.c"
@@ -35,18 +53,16 @@ idf_component_register(
         bt
         console
         esp_event
-        esp_http_server
+        esp_driver_gpio
         esp_driver_i2c
         esp_driver_uart
         esp_driver_usb_serial_jtag
-        esp_netif
         esp_timer
-        esp_wifi
         espressif__cjson
-        lwip
         mbedtls
         nvs_flash
-        esp-zigbee-lib
+        ${network_requires}
+        ${radio_requires}
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE BC250_VERSION="${PROJECT_VER}")

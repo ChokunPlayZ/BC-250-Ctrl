@@ -16,6 +16,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "psa/crypto.h"
+#include "target_caps.h"
 
 static const char *TAG = "config";
 static const char *NVS_NAMESPACE = "bc250";
@@ -215,7 +216,7 @@ void bc250_config_defaults(bc250_config_t *config)
     memset(config, 0, sizeof(*config));
     config->schema_version = BC250_CONFIG_SCHEMA_VERSION;
     config->configured = false;
-    config->radio_profile = BC250_RADIO_WIFI;
+    config->radio_profile = BC250_HAS_WIFI ? BC250_RADIO_WIFI : BC250_RADIO_ZIGBEE;
     strlcpy(config->hostname, "bc250-ctrl", sizeof(config->hostname));
     random_password(config->ap_password);
     bc250_config_set_admin_password(config, config->ap_password);
@@ -401,13 +402,16 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddBoolToObject(root, "configured", config->configured);
     cJSON_AddBoolToObject(root, "hold_ps_on", config->hold_ps_on);
     cJSON_AddStringToObject(root, "radio_profile", bc250_radio_profile_name(config->radio_profile));
+    cJSON_AddBoolToObject(root, "wifi_supported", BC250_HAS_WIFI);
+    cJSON_AddBoolToObject(root, "zigbee_supported", BC250_HAS_ZIGBEE);
+    cJSON_AddNumberToObject(root, "gpio_max", BC250_GPIO_MAX);
     cJSON_AddStringToObject(root, "hostname", config->hostname);
     cJSON_AddStringToObject(root, "wifi_ssid", config->wifi_ssid);
     cJSON_AddStringToObject(root, "wifi_password", include_secrets ? config->wifi_password : "");
     cJSON_AddBoolToObject(root, "advanced_gpio_override", config->advanced_gpio_override);
     cJSON *recommended = cJSON_AddArrayToObject(root, "recommended_gpios");
     cJSON *blocked = cJSON_AddArrayToObject(root, "blocked_gpios");
-    for (int gpio = 0; gpio <= 31; ++gpio) {
+    for (int gpio = 0; gpio <= BC250_GPIO_MAX; ++gpio) {
         if (bc250_config_pin_is_safe(gpio)) cJSON_AddItemToArray(recommended, cJSON_CreateNumber(gpio));
         if (bc250_config_pin_is_blocked(gpio)) cJSON_AddItemToArray(blocked, cJSON_CreateNumber(gpio));
     }
@@ -509,7 +513,7 @@ static bool patch_pin(cJSON *parent, const char *name, bc250_output_config_t *pi
     cJSON *gpio = cJSON_GetObjectItemCaseSensitive(item, "gpio");
     cJSON *active = cJSON_GetObjectItemCaseSensitive(item, "active_high");
     if (gpio != NULL) {
-        if (!valid_integer(gpio, BC250_GPIO_DISABLED, 31)) return false;
+        if (!valid_integer(gpio, BC250_GPIO_DISABLED, BC250_GPIO_MAX)) return false;
         pin->gpio = (int8_t)gpio->valueint;
     }
     if (cJSON_IsBool(active)) pin->active_high = cJSON_IsTrue(active);
@@ -588,12 +592,12 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
         if (cJSON_IsBool(v)) config->psu_i2c.enabled = cJSON_IsTrue(v);
         v = cJSON_GetObjectItemCaseSensitive(psu, "sda_gpio");
         if (v != NULL) {
-            if (!valid_integer(v, BC250_GPIO_DISABLED, 31)) goto invalid_numeric;
+            if (!valid_integer(v, BC250_GPIO_DISABLED, BC250_GPIO_MAX)) goto invalid_numeric;
             config->psu_i2c.sda_gpio = (int8_t)v->valueint;
         }
         v = cJSON_GetObjectItemCaseSensitive(psu, "scl_gpio");
         if (v != NULL) {
-            if (!valid_integer(v, BC250_GPIO_DISABLED, 31)) goto invalid_numeric;
+            if (!valid_integer(v, BC250_GPIO_DISABLED, BC250_GPIO_MAX)) goto invalid_numeric;
             config->psu_i2c.scl_gpio = (int8_t)v->valueint;
         }
         v = cJSON_GetObjectItemCaseSensitive(psu, "address");
@@ -655,7 +659,7 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
             dst->enabled = !cJSON_IsBool(v) || cJSON_IsTrue(v);
             v = cJSON_GetObjectItemCaseSensitive(src, "gpio");
             if (v != NULL) {
-                if (!valid_integer(v, BC250_GPIO_DISABLED, 31)) goto invalid_numeric;
+                if (!valid_integer(v, BC250_GPIO_DISABLED, BC250_GPIO_MAX)) goto invalid_numeric;
                 dst->input.gpio = (int8_t)v->valueint;
             }
             v = cJSON_GetObjectItemCaseSensitive(src, "active_high");

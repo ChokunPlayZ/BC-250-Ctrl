@@ -19,6 +19,7 @@
 #include "psu_i2c_service.h"
 #include "serial_service.h"
 #include "status_led.h"
+#include "target_caps.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
 
@@ -29,7 +30,9 @@ typedef struct {
     uint8_t count;
 } rapid_reset_state_t;
 
+#if BC250_HAS_WIFI
 RTC_NOINIT_ATTR static rapid_reset_state_t s_rapid_reset;
+#endif
 static const char *TAG = "bc250";
 static bool s_boot_config_valid;
 
@@ -37,7 +40,7 @@ static void log_boot_config(const bc250_config_t *config, bool first_boot, bool 
                             bool config_valid, bool config_ap)
 {
     static const char *const strategies[] = {
-        "ps_on_only", "button_only", "ps_on_then_button", "simultaneous",
+        "ps_on_only", "button_only", "ps_on_then_button", "simultaneous", "ps_on_latched",
     };
     static const char *const match_types[] = {
         "address", "name_exact", "name_prefix", "service_uuid", "manufacturer_data",
@@ -98,19 +101,25 @@ static void log_boot_config(const bc250_config_t *config, bool first_boot, bool 
 
 static bool detect_triple_reset(void)
 {
+#if BC250_HAS_WIFI
     if (s_rapid_reset.magic != RAPID_RESET_MAGIC) {
         s_rapid_reset.magic = RAPID_RESET_MAGIC;
         s_rapid_reset.count = 0;
     }
     if (s_rapid_reset.count < UINT8_MAX) s_rapid_reset.count++;
     return s_rapid_reset.count >= 3;
+#else
+    return false;
+#endif
 }
 
 static void healthy_task(void *arg)
 {
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(30000));
+#if BC250_HAS_WIFI
     s_rapid_reset.count = 0;
+#endif
     const bc250_config_t *config = bc250_config_get();
     bool station_required = config->configured &&
                             config->radio_profile == BC250_RADIO_WIFI;
@@ -118,8 +127,12 @@ static void healthy_task(void *arg)
         ESP_LOGI(TAG, "Configuration health check passed");
         ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_config_mark_healthy());
     } else {
-        ESP_LOGW(TAG, "Configuration not healthy; opening recovery AP");
-        ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_wifi_open_config_ap());
+        if (BC250_HAS_WIFI) {
+            ESP_LOGW(TAG, "Configuration not healthy; opening recovery AP");
+            ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_wifi_open_config_ap());
+        } else {
+            ESP_LOGW(TAG, "Configuration not healthy; correct settings through the serial console");
+        }
     }
     bc250_ota_mark_running_valid();
     ESP_LOGI(TAG, "Firmware health check complete");
@@ -174,8 +187,8 @@ static void dispatcher_task(void *arg)
             unsigned index = event.data.ble_device_index;
             const char *label = index < config->ble_device_count && index < BC250_MAX_BLE_DEVICES &&
                                 config->ble_devices[index].label[0] ? config->ble_devices[index].label : "(unnamed)";
-            if (bc250_power_service_sensed_on()) {
-                ESP_LOGI(TAG, "Controller [%u] %.31s: power-on skipped; power sense is already on", index, label);
+            if (bc250_power_service_is_on()) {
+                ESP_LOGI(TAG, "Controller [%u] %.31s: power-on skipped; power is already on", index, label);
             } else if (bc250_power_service_request(BC250_POWER_ACTION_ON)) {
                 ESP_LOGI(TAG, "Controller [%u] %.31s: power-on queued; power sense is off", index, label);
             } else {
@@ -232,18 +245,22 @@ void app_main(void)
     bool config_valid = bc250_config_validate(config, validation_error, sizeof(validation_error)) == ESP_OK;
     s_boot_config_valid = config_valid;
     log_boot_config(config, first_boot, pending, config_valid,
-                    force_ap || !config_valid ||
-                    (config->radio_profile == BC250_RADIO_WIFI && !config->wifi_ssid[0]));
+                    BC250_HAS_WIFI && (force_ap || !config_valid ||
+                    (config->radio_profile == BC250_RADIO_WIFI && !config->wifi_ssid[0])));
     if (triple_reset) ESP_LOGW(TAG, "Configuration AP requested by triple reset");
-    if (first_boot || !config->configured) ESP_LOGI(TAG, "Configuration AP required: initial setup incomplete");
-    if (recovery) ESP_LOGW(TAG, "Configuration AP required: pending configuration rolled back");
+    if (first_boot || !config->configured) ESP_LOGI(TAG, "%s", BC250_HAS_WIFI ?
+        "Configuration AP required: initial setup incomplete" :
+        "Initial setup incomplete; use the serial console");
+    if (recovery) ESP_LOGW(TAG, "%s", BC250_HAS_WIFI ?
+        "Configuration AP required: pending configuration rolled back" :
+        "Pending configuration rolled back; use the serial console");
     char pin_warning[192];
     if (bc250_config_pin_warnings(config, pin_warning, sizeof(pin_warning))) {
         ESP_LOGW(TAG, "%s", pin_warning);
     }
     if (!config_valid) {
         ESP_LOGE(TAG, "Configuration invalid; outputs remain disabled: %s", validation_error);
-        force_ap = true;
+        force_ap = BC250_HAS_WIFI;
     } else {
         ESP_ERROR_CHECK(bc250_power_service_start(config));
         ESP_ERROR_CHECK(bc250_status_led_start(config));

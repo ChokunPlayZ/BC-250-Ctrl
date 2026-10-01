@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+TARGETS = (
+    "esp32", "esp32s3", "esp32c3", "esp32c5", "esp32c6", "esp32c61",
+    "esp32h2", "esp32h21", "esp32h4",
+)
 PROFILES = {
-    "esp32c5_4mb": ("esp32c5", "sdkconfig_4mb.defaults"),
-    "esp32c5_8mb": ("esp32c5", "sdkconfig_8mb.defaults"),
-    "esp32c6_4mb": ("esp32c6", "sdkconfig_4mb.defaults"),
-    "esp32c6_8mb": ("esp32c6", "sdkconfig_8mb.defaults"),
-    "esp32c5_4mb_recovery": ("esp32c5", "sdkconfig_4mb.defaults"),
-    "esp32c5_8mb_recovery": ("esp32c5", "sdkconfig_8mb.defaults"),
+    f"{target}_{size}mb": (target, f"sdkconfig_{size}mb.defaults")
+    for target in TARGETS for size in ((4,) if target.startswith("esp32h") else (4, 8))
 }
+PROFILES.update({
+    f"esp32c5_{size}mb_recovery": ("esp32c5", f"sdkconfig_{size}mb.defaults")
+    for size in (4, 8)
+})
 
 
 def migrate_c5_console(sdkconfig: Path) -> None:
@@ -69,7 +74,12 @@ def main() -> int:
         return 2
 
     idf_py = shutil.which("idf.py")
-    if idf_py is None:
+    idf_path = Path(os.environ.get("IDF_PATH", "")) / "tools" / "idf.py"
+    if idf_py is None and idf_path.is_file():
+        idf_command = [sys.executable, str(idf_path)]
+    elif idf_py is not None:
+        idf_command = [idf_py]
+    else:
         print(
             "idf.py was not found. Activate an ESP-IDF environment first.",
             file=sys.stderr,
@@ -83,13 +93,15 @@ def main() -> int:
     sdkconfig = build_dir / "sdkconfig"
     migrate_coredump_stack(sdkconfig)
     defaults = f"{project_dir / 'sdkconfig.defaults'};{project_dir / profile_defaults}"
+    if target in {"esp32", "esp32s3"} and not recovery:
+        defaults += f";{PROJECT_ROOT / 'sdkconfig_xtensa.defaults'}"
     if target == "esp32c5" and not recovery:
         defaults += f";{PROJECT_ROOT / 'sdkconfig_c5_usb.defaults'}"
         migrate_c5_console(sdkconfig)
     actions = sys.argv[2:] or ["build"]
 
     command = [
-        idf_py,
+        *idf_command,
         "-B",
         str(build_dir),
         f"-DIDF_TARGET={target}",

@@ -152,6 +152,25 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(JSON.parse(calls.find(c=>c.method==='PUT').body).hold_ps_on, false);
     await page.close();
 
+    ({page, calls} = await fixture());
+    await page.getByRole('button', {name:'Settings', exact:true}).click();
+    await page.locator('#wiringsection > summary').click();
+    await page.locator('#strategy').selectOption('4');
+    await page.locator('#pbtn').fill('-1');
+    await page.locator('#sense').fill('-1');
+    assert.equal(await visible(page,'holdpsongroup'), false);
+    assert.equal(await page.locator('#savebutton').isEnabled(), true, 'latched PS_ON only needs its own GPIO');
+    await page.locator('#pson').fill('-1');
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'latched PS_ON needs a PS_ON GPIO');
+    await page.locator('#pson').fill('4');
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    const latched = JSON.parse(calls.find(c=>c.method==='PUT').body);
+    assert.equal(latched.timing.strategy, 4);
+    assert.equal(latched.pins.power_sense.gpio, -1);
+    assert.equal(latched.pins.power_button.gpio, -1);
+    await page.close();
+
     ({page, calls} = await fixture({radio_profile:'wifi'}));
     assert.equal(await visible(page,'pairingsection'), false);
     await editNetwork(page); await page.locator('#radio').selectOption('zigbee');

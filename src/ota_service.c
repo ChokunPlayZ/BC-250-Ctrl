@@ -8,6 +8,7 @@
 static const char *TAG = "ota";
 #endif
 
+#if BC250_HAS_WIFI
 esp_err_t bc250_ota_handle_http(httpd_req_t *request)
 {
 #if !CONFIG_BC250_OTA_ENABLED
@@ -61,6 +62,7 @@ esp_err_t bc250_ota_handle_http(httpd_req_t *request)
     return ESP_OK;
 #endif
 }
+#endif
 
 void bc250_ota_mark_running_valid(void)
 {

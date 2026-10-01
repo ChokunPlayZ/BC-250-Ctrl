@@ -3,13 +3,15 @@
 #include <string.h>
 
 #include "config_store.h"
+#include "target_caps.h"
 
 static bc250_config_t fixture(void)
 {
     return (bc250_config_t) {
         .schema_version = BC250_CONFIG_SCHEMA_VERSION,
         .configured = true,
-        .radio_profile = BC250_RADIO_ZIGBEE,
+        .radio_profile = BC250_HAS_ZIGBEE ? BC250_RADIO_ZIGBEE : BC250_RADIO_WIFI,
+        .wifi_ssid = "test-network",
         .ps_on.gpio = 0, .power_button.gpio = 1, .power_sense.gpio = 6,
         .status_led.gpio = -1,
         .timing = {.strategy = BC250_START_PS_ON_THEN_BUTTON, .button_pulse_ms = 200,
@@ -25,7 +27,21 @@ int main(void)
     char error[192], warning[192];
     bc250_config_t config = fixture();
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
-    assert(!bc250_config_pin_warnings(&config, warning, sizeof(warning)));
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    config.power_sense.gpio = 34;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config.power_sense.gpio = 6;
+    config.ps_on.gpio = 34;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config = fixture();
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+    config.ps_on.gpio = 48;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
+    config = fixture();
+#endif
+    assert(bc250_config_pin_warnings(&config, warning, sizeof(warning)) ==
+           (!bc250_config_pin_is_safe(0) || !bc250_config_pin_is_safe(1) ||
+            !bc250_config_pin_is_safe(6)));
     config.timing.strategy = BC250_START_BUTTON_ONLY;
     config.ps_on.gpio = BC250_GPIO_DISABLED;
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
@@ -35,26 +51,40 @@ int main(void)
     config.ps_on.gpio = 0;
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
     config = fixture();
+    config.timing.strategy = BC250_START_PS_ON_LATCHED;
+    config.power_sense.gpio = BC250_GPIO_DISABLED;
+    config.power_button.gpio = BC250_GPIO_DISABLED;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
+    config.ps_on.gpio = BC250_GPIO_DISABLED;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config = fixture();
+    config.power_sense.gpio = BC250_GPIO_DISABLED;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config = fixture();
     config.radio_profile = BC250_RADIO_LEGACY_HYBRID;
     assert(bc250_config_validate(&config, error, sizeof(error)) != ESP_OK);
     bc250_config_t migrated = config;
     migrated.radio_profile = BC250_RADIO_ZIGBEE;
     assert(bc250_config_migrate_legacy_profile(&config));
     assert(memcmp(&config, &migrated, sizeof(config)) == 0);
-    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
+    assert((bc250_config_validate(&config, error, sizeof(error)) == ESP_OK) == BC250_HAS_ZIGBEE);
     assert(!bc250_config_migrate_legacy_profile(&config));
     config.radio_profile = BC250_RADIO_WIFI;
     assert(!bc250_config_migrate_legacy_profile(&config));
+    assert((bc250_config_validate(&config, error, sizeof(error)) == ESP_OK) == BC250_HAS_WIFI);
+    config.wifi_ssid[0] = '\0';
     assert(bc250_config_validate(&config, error, sizeof(error)) != ESP_OK);
-    strcpy(config.wifi_ssid, "test-network");
-    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
     config = fixture();
     /* Board guidance stays advisory; known boot-breaking C5 pins are excluded. */
     for (int gpio = 0; gpio <= 31; ++gpio) {
         config = fixture();
         config.status_led.gpio = gpio;
         if (gpio == 0 || gpio == 1 || gpio == 6) continue;
-        if (bc250_config_pin_is_blocked(gpio)) {
+        if (bc250_config_pin_is_blocked(gpio)
+#if defined(CONFIG_IDF_TARGET_ESP32)
+            || (gpio >= 24 && gpio <= 31)
+#endif
+            ) {
             assert(bc250_config_validate(&config, error, sizeof(error)) != ESP_OK);
             assert(strstr(error, "unavailable"));
             continue;
@@ -133,7 +163,7 @@ int main(void)
     config.power_button.gpio = -1;
     assert(bc250_config_validate(&config, error, sizeof(error)) != ESP_OK);
     config = fixture();
-    config.ps_on.gpio = 32;
+    config.ps_on.gpio = 49;
     assert(bc250_config_validate(&config, error, sizeof(error)) != ESP_OK);
     config.ps_on.gpio = -2;
     assert(bc250_config_validate(&config, error, sizeof(error)) != ESP_OK);

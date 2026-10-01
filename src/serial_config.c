@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "target_caps.h"
 
 typedef enum { BOOL, U8, I8, U16, U32, TEXT, ENUM, PASSWORD } field_type_t;
 typedef struct {
@@ -17,7 +18,8 @@ typedef struct {
 } field_t;
 
 static const char *const profiles[] = {"wifi", "zigbee", NULL};
-static const char *const strategies[] = {"ps_on_only", "button_only", "ps_on_then_button", "simultaneous", NULL};
+static const char *const strategies[] = {"ps_on_only", "button_only", "ps_on_then_button", "simultaneous",
+                                         "ps_on_latched", NULL};
 static const char *const actions[] = {"none", "on", "off", "toggle", "force_off", "config_ap",
                                      "zigbee_commission", "zigbee_reset", NULL};
 static const char *const matchers[] = {"address", "name_exact", "name_prefix", "service_uuid",
@@ -27,7 +29,7 @@ static const char *const matchers[] = {"address", "name_exact", "name_prefix", "
     {name, offsetof(structure, member), type, min, max, choices}
 #define ROOT(member, type, min, max) FIELD(bc250_config_t, #member, member, type, min, max, NULL)
 #define STRING(member) ROOT(member, TEXT, 0, sizeof(((bc250_config_t *)0)->member) - 1)
-#define PIN(member) ROOT(member.gpio, I8, -1, 31), ROOT(member.active_high, BOOL, 0, 1)
+#define PIN(member) ROOT(member.gpio, I8, -1, BC250_GPIO_MAX), ROOT(member.active_high, BOOL, 0, 1)
 #define TIMING(member) ROOT(timing.member, U32, 0, UINT32_MAX)
 static const field_t root_fields[] = {
     ROOT(configured, BOOL, 0, 1), ROOT(advanced_gpio_override, BOOL, 0, 1),
@@ -41,16 +43,16 @@ static const field_t root_fields[] = {
     STRING(zigbee_model),
     PIN(ps_on), PIN(power_button), PIN(power_sense), PIN(status_led),
     ROOT(power_sense.pull_up, BOOL, 0, 1), ROOT(power_sense.debounce_ms, U16, 0, UINT16_MAX),
-    FIELD(bc250_config_t, "timing.strategy", timing.strategy, ENUM, 0, BC250_START_SIMULTANEOUS, strategies),
+    FIELD(bc250_config_t, "timing.strategy", timing.strategy, ENUM, 0, BC250_START_PS_ON_LATCHED, strategies),
     TIMING(inter_output_delay_ms), TIMING(button_pulse_ms), TIMING(handoff_delay_ms),
     TIMING(start_timeout_ms), TIMING(shutdown_timeout_ms), TIMING(force_off_ms), TIMING(retry_cooldown_ms),
-    ROOT(psu_i2c.enabled, BOOL, 0, 1), ROOT(psu_i2c.sda_gpio, I8, -1, 31), ROOT(psu_i2c.scl_gpio, I8, -1, 31),
+    ROOT(psu_i2c.enabled, BOOL, 0, 1), ROOT(psu_i2c.sda_gpio, I8, -1, BC250_GPIO_MAX), ROOT(psu_i2c.scl_gpio, I8, -1, BC250_GPIO_MAX),
     ROOT(psu_i2c.address, U8, 0x58, 0x5f), ROOT(psu_i2c.poll_interval_ms, U32, 500, 60000),
     ROOT(button_count, U8, 0, BC250_MAX_BUTTONS), ROOT(ble_device_count, U8, 0, BC250_MAX_BLE_DEVICES),
 };
 #define BUTTON(name, member, type, min, max) FIELD(bc250_button_config_t, name, member, type, min, max, NULL)
 static const field_t button_fields[] = {
-    BUTTON("enabled", enabled, BOOL, 0, 1), BUTTON("gpio", input.gpio, I8, -1, 31),
+    BUTTON("enabled", enabled, BOOL, 0, 1), BUTTON("gpio", input.gpio, I8, -1, BC250_GPIO_MAX),
     BUTTON("active_high", input.active_high, BOOL, 0, 1), BUTTON("pull_up", input.pull_up, BOOL, 0, 1),
     BUTTON("debounce_ms", input.debounce_ms, U16, 1, UINT16_MAX),
     BUTTON("double_press_ms", double_press_ms, U16, 1, UINT16_MAX),

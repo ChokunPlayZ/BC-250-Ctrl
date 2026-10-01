@@ -139,9 +139,9 @@ static void zcl_handler(ezb_zcl_core_action_callback_id_t callback_id, void *mes
         return;
     }
     bool requested_on = *(bool *)set->in.attribute.data.value;
-    /* Local attribute refreshes mirror the sense input and are not commands. */
-    if (requested_on == bc250_power_service_sensed_on()) {
-        ESP_LOGI(TAG, "On/Off attribute %s: no power action; sense already matches", requested_on ? "on" : "off");
+    /* Local attribute refreshes mirror the current power state and are not commands. */
+    if (requested_on == bc250_power_service_is_on()) {
+        ESP_LOGI(TAG, "On/Off attribute %s: no power action; state already matches", requested_on ? "on" : "off");
         return;
     }
     ESP_LOGI(TAG, "On/Off attribute requested power %s", requested_on ? "on" : "off");
@@ -322,7 +322,7 @@ void bc250_zigbee_update_power_state(bc250_power_state_t state)
 {
     (void)state;
     if (!s_started) return;
-    bool on = bc250_power_service_sensed_on();
+    bool on = bc250_power_service_is_on();
     esp_zigbee_task_queue_post(update_attribute_cb, (void *)(uintptr_t)on);
 }
 

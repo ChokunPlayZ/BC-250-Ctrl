@@ -29,6 +29,7 @@ typedef enum {
     BC250_START_BUTTON_ONLY,
     BC250_START_PS_ON_THEN_BUTTON,
     BC250_START_SIMULTANEOUS,
+    BC250_START_PS_ON_LATCHED,
 } bc250_start_strategy_t;
 
 typedef struct {

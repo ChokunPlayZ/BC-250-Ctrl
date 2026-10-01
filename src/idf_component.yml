@@ -1,7 +1,9 @@
 dependencies:
   idf:
-    version: ">=5.5.2,<6.1.0"
+    version: ">=5.5.2,<6.2.0"
   espressif/esp-zigbee-lib:
     version: "2.0.4"
+    rules:
+      - if: target in ["esp32c5", "esp32c6", "esp32h2", "esp32h21", "esp32h4"]
   espressif/cjson:
     version: "^1.7.19"

@@ -15,6 +15,8 @@ char *bc250_status_json(void)
     cJSON_AddStringToObject(root, "version", BC250_VERSION);
     cJSON_AddStringToObject(root, "power_state", bc250_power_state_name(bc250_power_service_state()));
     cJSON_AddBoolToObject(root, "sensed_on", bc250_power_service_sensed_on());
+    cJSON_AddBoolToObject(root, "power_sense_available",
+                          bc250_config_get()->timing.strategy != BC250_START_PS_ON_LATCHED);
     cJSON_AddBoolToObject(root, "ps_on_active", outputs.ps_on);
     cJSON_AddBoolToObject(root, "power_button_active", outputs.power_button);
     cJSON_AddBoolToObject(root, "wifi_connected", bc250_wifi_is_connected());

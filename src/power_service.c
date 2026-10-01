@@ -18,6 +18,11 @@ static QueueHandle_t s_requests;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_sensed_on;
 
+static bool uses_power_sense(void)
+{
+    return s_config.timing.strategy != BC250_START_PS_ON_LATCHED;
+}
+
 static const char *action_name(bc250_power_action_t action)
 {
     switch (action) {
@@ -67,21 +72,21 @@ static void power_task(void *arg)
     uint64_t raw_changed_at = now_ms();
     uint32_t settle_ms = s_config.sense_on_ms > s_config.sense_off_ms ?
                          s_config.sense_on_ms : s_config.sense_off_ms;
-    uint64_t sense_ready_at = raw_changed_at + settle_ms;
-    bool initial = bc250_gpio_read(&s_config.power_sense);
+    uint64_t sense_ready_at = uses_power_sense() ? raw_changed_at + settle_ms : raw_changed_at;
+    bool initial = uses_power_sense() && bc250_gpio_read(&s_config.power_sense);
     s_sensed_on = initial;
     bc250_power_logic_init(&s_logic, &s_config.timing, s_config.hold_ps_on, initial, now_ms());
     apply_outputs(&s_logic.outputs);
     bc250_power_state_t announced = s_logic.state;
     ESP_LOGI(TAG, "Initial power state: %s; sense: %s; PS_ON: %s",
-             bc250_power_state_name(announced), initial ? "on" : "off",
+             bc250_power_state_name(announced), uses_power_sense() ? (initial ? "on" : "off") : "unused",
              s_logic.outputs.ps_on ? "active" : "inactive");
 
     while (true) {
         uint64_t now = now_ms();
-        bool raw = bc250_gpio_read(&s_config.power_sense);
+        bool raw = uses_power_sense() && bc250_gpio_read(&s_config.power_sense);
         bool was_sensed_on = s_sensed_on;
-        s_sensed_on = update_sense(s_sensed_on, raw, &raw_changed_at, now);
+        if (uses_power_sense()) s_sensed_on = update_sense(s_sensed_on, raw, &raw_changed_at, now);
         if (s_sensed_on != was_sensed_on) {
             ESP_LOGI(TAG, "Power sense changed: %s -> %s", was_sensed_on ? "on" : "off", s_sensed_on ? "on" : "off");
         }
@@ -96,7 +101,8 @@ static void power_task(void *arg)
             portEXIT_CRITICAL(&s_lock);
             apply_outputs(&outputs);
             bool wants_on = action == BC250_POWER_ACTION_ON ||
-                            (action == BC250_POWER_ACTION_TOGGLE && !s_sensed_on);
+                            (action == BC250_POWER_ACTION_TOGGLE &&
+                             (uses_power_sense() ? !s_sensed_on : before != BC250_POWER_ON));
             if (!accepted) {
                 const char *reason = wants_on ? (before == BC250_POWER_STOPPING ? "shutdown in progress" : "retry cooldown active") :
                                                "invalid action";
@@ -107,8 +113,9 @@ static void power_task(void *arg)
                          bc250_power_state_name(before), bc250_power_state_name(after));
                 if (before != BC250_POWER_STARTING && after == BC250_POWER_STARTING) {
                     ESP_LOGI(TAG, "Power-on sequence triggered");
-                } else if (wants_on) {
-                    ESP_LOGI(TAG, "Power-on skipped: %s", s_sensed_on ? "power sense already on" : "sequence already starting");
+                } else if (wants_on && before == after) {
+                    ESP_LOGI(TAG, "Power-on skipped: %s", uses_power_sense() && s_sensed_on ?
+                             "power sense already on" : "already on or starting");
                 } else if (after == BC250_POWER_STOPPING && action == BC250_POWER_ACTION_FORCE_OFF && s_sensed_on) {
                     ESP_LOGI(TAG, "Force-off button hold triggered");
                 } else if (before != BC250_POWER_STOPPING && after == BC250_POWER_STOPPING) {
@@ -130,7 +137,8 @@ static void power_task(void *arg)
                 ESP_LOGW(TAG, "Power state: fault; sequence timed out; sense=%s; PS_ON=%s; retry cooldown applies",
                          s_sensed_on ? "on" : "off", outputs.ps_on ? "active" : "inactive");
             } else {
-                ESP_LOGI(TAG, "Power state: %s (sense=%s)", bc250_power_state_name(state), s_sensed_on ? "on" : "off");
+                ESP_LOGI(TAG, "Power state: %s (sense=%s)", bc250_power_state_name(state),
+                         uses_power_sense() ? (s_sensed_on ? "on" : "off") : "unused");
             }
             bc250_app_event_t event = {
                 .type = BC250_EVENT_POWER_STATE_CHANGED,
@@ -150,7 +158,9 @@ esp_err_t bc250_power_service_start(const bc250_config_t *config)
     s_config = *config;
     ESP_RETURN_ON_ERROR(bc250_gpio_init_output(&s_config.ps_on), TAG, "PS_ON GPIO");
     ESP_RETURN_ON_ERROR(bc250_gpio_init_output(&s_config.power_button), TAG, "power button GPIO");
-    ESP_RETURN_ON_ERROR(bc250_gpio_init_input(&s_config.power_sense), TAG, "power sense GPIO");
+    if (uses_power_sense()) {
+        ESP_RETURN_ON_ERROR(bc250_gpio_init_input(&s_config.power_sense), TAG, "power sense GPIO");
+    }
     bc250_gpio_write(&s_config.ps_on, false);
     bc250_gpio_write(&s_config.power_button, false);
     s_requests = xQueueCreate(8, sizeof(bc250_power_action_t));
@@ -178,6 +188,12 @@ bc250_power_state_t bc250_power_service_state(void)
 bool bc250_power_service_sensed_on(void)
 {
     return s_sensed_on;
+}
+
+bool bc250_power_service_is_on(void)
+{
+    if (uses_power_sense()) return s_sensed_on;
+    return bc250_power_service_state() == BC250_POWER_ON;
 }
 
 bc250_power_outputs_t bc250_power_service_outputs(void)

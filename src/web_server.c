@@ -21,6 +21,7 @@
 #include "power_service.h"
 #include "psu_i2c_service.h"
 #include "status_service.h"
+#include "target_caps.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
 
@@ -293,13 +294,15 @@ static esp_err_t i2c_scan_handler(httpd_req_t *request)
     cJSON *scl = json ? cJSON_GetObjectItemCaseSensitive(json, "scl_gpio") : NULL;
     bool valid = cJSON_IsNumber(sda) && cJSON_IsNumber(scl) &&
                  sda->valuedouble == sda->valueint && scl->valuedouble == scl->valueint &&
-                 sda->valueint >= 0 && sda->valueint <= 31 &&
-                 scl->valueint >= 0 && scl->valueint <= 31;
+                 sda->valueint >= 0 && sda->valueint <= BC250_GPIO_MAX &&
+                 scl->valueint >= 0 && scl->valueint <= BC250_GPIO_MAX;
     int sda_gpio = valid ? sda->valueint : -1;
     int scl_gpio = valid ? scl->valueint : -1;
     cJSON_Delete(json);
     if (!valid) {
-        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "SDA and SCL must be GPIO numbers from 0 to 31");
+        char message[80];
+        snprintf(message, sizeof(message), "SDA and SCL must be GPIO numbers from 0 to %d", BC250_GPIO_MAX);
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, message);
         return ESP_FAIL;
     }
 

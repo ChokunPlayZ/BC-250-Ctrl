@@ -1,0 +1,4 @@
+# ESP-IDF 6.1 NimBLE needs the connection code for private-address resolution.
+# The firmware still only scans and never opens a connection.
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1

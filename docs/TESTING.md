@@ -3,7 +3,8 @@
 ## Automated checks
 
 - Run native state-machine, BLE matcher, shell parsing, typed settings, GPIO advisory/exclusion, recovery erase failure, Wi-Fi mode/client inactivity tests, Zigbee pause/resume lifecycle tests, status LED pattern tests, and I²C scan/PSU transfer tests (recovery, partial scan and timeout budget, checksum/NACK failure, EEPROM identity and capacity parsing, GPIO diagnostics, busy bus, and concurrent scan/startup).
-- Build C5/C6 in both 4 MB and 8 MB layouts, and both standalone C5 recovery profiles.
+- Build the 4 MB profile for ESP32, S3, C3, C5, C6, C61, H2, H21, and H4; build 8 MB C5/C6 and both standalone C5 recovery profiles. H21/H4 and the Xtensa targets use ESP-IDF 6.1 in CI.
+- On each H target, complete first setup over the primary serial console, confirm BLE discovery and Zigbee joining, and recover an invalid saved configuration through serial. Verify no Wi-Fi AP or HTTP service starts. On Wi-Fi-only targets, confirm Zigbee mode and Zigbee button actions are rejected before saving.
 - Confirm each application fits its selected partition.
 - Review compiler warnings and check that generated configuration files are not committed.
 
@@ -13,6 +14,7 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 
 - Confirm both outputs remain inactive during reset, bootloader operation, and recovery AP mode. At power-service startup, both remain inactive by default; with PS_ON hold enabled, only PS_ON should assert when the board is sensed on.
 - Exercise PS_ON only, button only, delayed PS_ON then button, and zero-delay simultaneous start.
+- Exercise PS_ON latch with power sense and motherboard switch outputs unassigned. Check that On closes PS_ON without a start timeout, repeated On keeps it closed, a custom button's second Toggle or Zigbee Off opens it, and Zigbee On/Off reports the commanded PS_ON state. Check reset starts with PS_ON open.
 - Verify button pulse, sensed-on handoff, start timeout, 60-second retry cooldown, graceful shutdown, force-off hold, and shutdown timeout.
 - Enable PS_ON hold and verify all four startup methods keep the contact closed after handoff. Test externally starting the board, starting the ESP32 while the board is already on, shutdown during handoff, normal shutdown, force-off, and shutdown timeout. PS_ON must remain closed throughout sensed-on operation and open after the sense-off filter; a start timeout with sense off must release both outputs. Verify the checkbox saves/reloads and rejects a missing PS_ON GPIO with button-only startup. Upgrade version 1/2 active and pending settings and verify all previous settings survive with hold disabled.
 - Simulate missing, blinking, and stuck power-LED inputs.

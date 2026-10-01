@@ -22,6 +22,7 @@
 #include "serial_config.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
+#include "target_caps.h"
 
 #if CONFIG_ESP_CONSOLE_UART
 #include "driver/uart.h"
@@ -112,12 +113,17 @@ static void print_status(void)
     bc250_power_outputs_t outputs = bc250_power_service_outputs();
     printf("Firmware:      %s\n", BC250_VERSION);
     printf("Power:         %s (sense: %s)\n", bc250_power_state_name(bc250_power_service_state()),
+           bc250_config_get()->timing.strategy == BC250_START_PS_ON_LATCHED ? "unused" :
            bc250_power_service_sensed_on() ? "on" : "off");
     printf("Outputs:       PS_ON %s, power button %s\n", outputs.ps_on ? "active" : "inactive",
            outputs.power_button ? "active" : "inactive");
-    printf("Wi-Fi:         %s\n", bc250_wifi_is_connected() ? "connected" : "disconnected");
-    printf("IP address:    %s\n", bc250_wifi_ip_address());
-    printf("Setup AP:      %s\n", bc250_wifi_is_config_ap() ? "open at http://192.168.4.1/" : "closed");
+    if (BC250_HAS_WIFI) {
+        printf("Wi-Fi:         %s\n", bc250_wifi_is_connected() ? "connected" : "disconnected");
+        printf("IP address:    %s\n", bc250_wifi_ip_address());
+        printf("Setup AP:      %s\n", bc250_wifi_is_config_ap() ? "open at http://192.168.4.1/" : "closed");
+    } else {
+        puts("Wi-Fi / AP:    unavailable on this chip");
+    }
     printf("Zigbee:        %s\n", bc250_zigbee_is_joining() ? "joining" :
            bc250_zigbee_is_joined() ? "joined" :
            bc250_zigbee_is_started() ? "not joined" : "disabled");
