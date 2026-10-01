@@ -15,7 +15,7 @@ jobs:
   verify-tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Verify firmware version matches release tag
@@ -40,19 +40,19 @@ jobs:
           - { profile: esp32_8mb, target: esp32, idf: v6.1, partitions: partitions_8mb.csv }
           - { profile: esp32s3_4mb, target: esp32s3, idf: v6.1, partitions: partitions_4mb.csv }
           - { profile: esp32s3_8mb, target: esp32s3, idf: v6.1, partitions: partitions_8mb.csv }
-          - { profile: esp32c3_4mb, target: esp32c3, idf: v5.5.4, partitions: partitions_4mb.csv }
-          - { profile: esp32c3_8mb, target: esp32c3, idf: v5.5.4, partitions: partitions_8mb.csv }
-          - { profile: esp32c5_4mb, target: esp32c5, idf: v5.5.4, partitions: partitions_4mb.csv }
-          - { profile: esp32c5_8mb, target: esp32c5, idf: v5.5.4, partitions: partitions_8mb.csv }
-          - { profile: esp32c6_4mb, target: esp32c6, idf: v6.0.1, partitions: partitions_4mb.csv }
-          - { profile: esp32c6_8mb, target: esp32c6, idf: v6.0.1, partitions: partitions_8mb.csv }
-          - { profile: esp32c61_4mb, target: esp32c61, idf: v5.5.4, partitions: partitions_4mb.csv }
-          - { profile: esp32c61_8mb, target: esp32c61, idf: v5.5.4, partitions: partitions_8mb.csv }
-          - { profile: esp32h2_4mb, target: esp32h2, idf: v5.5.4, partitions: partitions_4mb.csv }
+          - { profile: esp32c3_4mb, target: esp32c3, idf: v5.5.5, partitions: partitions_4mb.csv }
+          - { profile: esp32c3_8mb, target: esp32c3, idf: v5.5.5, partitions: partitions_8mb.csv }
+          - { profile: esp32c5_4mb, target: esp32c5, idf: v5.5.5, partitions: partitions_4mb.csv }
+          - { profile: esp32c5_8mb, target: esp32c5, idf: v5.5.5, partitions: partitions_8mb.csv }
+          - { profile: esp32c6_4mb, target: esp32c6, idf: v6.0.3, partitions: partitions_4mb.csv }
+          - { profile: esp32c6_8mb, target: esp32c6, idf: v6.0.3, partitions: partitions_8mb.csv }
+          - { profile: esp32c61_4mb, target: esp32c61, idf: v5.5.5, partitions: partitions_4mb.csv }
+          - { profile: esp32c61_8mb, target: esp32c61, idf: v5.5.5, partitions: partitions_8mb.csv }
+          - { profile: esp32h2_4mb, target: esp32h2, idf: v5.5.5, partitions: partitions_4mb.csv }
           - { profile: esp32h21_4mb, target: esp32h21, idf: v6.1, partitions: partitions_4mb.csv }
           - { profile: esp32h4_4mb, target: esp32h4, idf: v6.1, partitions: partitions_4mb.csv }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Build ${{ matrix.profile }}
@@ -71,7 +71,7 @@ jobs:
           mkdir -p release
           cp "build/${{ matrix.profile }}/bc250_ctrl.bin" "release/bc250_ctrl-${{ matrix.profile }}.bin"
           cp "build/${{ matrix.profile }}/bc250_ctrl-full.bin" "release/bc250_ctrl-${{ matrix.profile }}-full.bin"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.profile }}
           path: release/*.bin
@@ -83,8 +83,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: firmware-*
           path: release

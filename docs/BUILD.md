@@ -2,7 +2,7 @@
 
 ## Requirements
 
-Install and activate [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/get-started/index.html). The component manifest accepts IDF `>=5.5.2,<6.2.0`. The tested versions below follow the CI and release workflows. Use IDF 6.1 for ESP32, S3, H21, and H4; H21/H4 BLE and Zigbee are unavailable in 5.5.4.
+Install and activate [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/get-started/index.html). The component manifest accepts IDF `>=5.5.2,<6.2.0`. The versions below follow the CI and release workflows. Use IDF 6.1 for ESP32, S3, H21, and H4; H21/H4 BLE and Zigbee are unavailable in 5.5.4.
 
 ESP32-S2 and ESP32-P4 are excluded because they lack onboard BLE. The H targets have no Wi-Fi or web interface; they use the serial shell and Zigbee.
 
@@ -10,15 +10,15 @@ ESP32-S2 and ESP32-P4 are excluded because they lack onboard BLE. The H targets 
 
 Choose the profile matching **both** the chip and the module's actual flash capacity. Every 8 MB profile supports web OTA; 4 MB profiles use serial/USB updates.
 
-| Chip | Profiles | Tested IDF |
+| Chip | Profiles | CI/release IDF |
 |---|---|---|
 | ESP32 | `esp32_4mb`, `esp32_8mb` | 6.1 |
 | ESP32-S3 | `esp32s3_4mb`, `esp32s3_8mb` | 6.1 |
-| ESP32-C3 | `esp32c3_4mb`, `esp32c3_8mb` | 5.5.4 |
-| ESP32-C5 | `esp32c5_4mb`, `esp32c5_8mb` | 5.5.4 |
-| ESP32-C6 | `esp32c6_4mb`, `esp32c6_8mb` | 6.0.1 |
-| ESP32-C61 | `esp32c61_4mb`, `esp32c61_8mb` | 5.5.4 |
-| ESP32-H2 | `esp32h2_4mb` | 5.5.4 |
+| ESP32-C3 | `esp32c3_4mb`, `esp32c3_8mb` | 5.5.5 |
+| ESP32-C5 | `esp32c5_4mb`, `esp32c5_8mb` | 5.5.5 |
+| ESP32-C6 | `esp32c6_4mb`, `esp32c6_8mb` | 6.0.3 |
+| ESP32-C61 | `esp32c61_4mb`, `esp32c61_8mb` | 5.5.5 |
+| ESP32-H2 | `esp32h2_4mb` | 5.5.5 |
 | ESP32-H21 | `esp32h21_4mb` | 6.1 |
 | ESP32-H4 | `esp32h4_4mb` | 6.1 |
 
