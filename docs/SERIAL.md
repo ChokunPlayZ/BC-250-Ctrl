@@ -25,7 +25,7 @@ Runtime logs show controller arrival with its address and RSSI, absence and rear
 
 ```text
 bc250> status
-Firmware:      0.1.0
+Firmware:      v1.2.3
 Power:         off (sense: off)
 ...
 bc250> on

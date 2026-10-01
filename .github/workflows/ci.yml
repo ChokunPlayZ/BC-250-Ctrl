@@ -4,22 +4,24 @@ on:
   push:
     paths:
       - '.github/workflows/ci.yml'
+      - '.github/workflows/release.yml'
       - 'CMakeLists.txt'
       - 'partitions*.csv'
       - 'sdkconfig*.defaults'
       - 'src/**'
-      - 'recovery/**'
       - 'test/native/**'
+      - 'test/tools/**'
       - 'tools/**'
   pull_request:
     paths:
       - '.github/workflows/ci.yml'
+      - '.github/workflows/release.yml'
       - 'CMakeLists.txt'
       - 'partitions*.csv'
       - 'sdkconfig*.defaults'
       - 'src/**'
-      - 'recovery/**'
       - 'test/native/**'
+      - 'test/tools/**'
       - 'tools/**'
 
 jobs:
@@ -27,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s test/tools
       - run: cmake -S test/native -B build/host
       - run: cmake --build build/host
       - run: ctest --test-dir build/host --output-on-failure
@@ -83,6 +86,8 @@ jobs:
             partitions: partitions_4mb.csv
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Build ${{ matrix.profile }} with ESP-IDF
         uses: espressif/esp-idf-ci-action@v1
         with:
@@ -91,20 +96,3 @@ jobs:
           path: .
           command: python tools/idf_build.py ${{ matrix.profile }} build
       - run: python tools/check_image_size.py ${{ matrix.partitions }} build/${{ matrix.profile }}/bc250_ctrl.bin
-      - name: Build C5 recovery image
-        if: matrix.target == 'esp32c5'
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: ${{ matrix.idf }}
-          target: ${{ matrix.target }}
-          path: .
-          command: python tools/idf_build.py ${{ matrix.profile }}_recovery build merge-bin -o bc250_recovery-full.bin
-      - name: Check recovery image size
-        if: matrix.target == 'esp32c5'
-        run: python tools/check_image_size.py ${{ matrix.partitions }} build/${{ matrix.profile }}_recovery/bc250_recovery.bin
-      - name: Upload C5 recovery image
-        if: matrix.target == 'esp32c5'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.profile }}_recovery
-          path: build/${{ matrix.profile }}_recovery/bc250_recovery-full.bin

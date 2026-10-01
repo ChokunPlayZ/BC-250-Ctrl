@@ -18,10 +18,6 @@ PROFILES = {
     f"{target}_{size}mb": (target, f"sdkconfig_{size}mb.defaults")
     for target in TARGETS for size in ((4,) if target.startswith("esp32h") else (4, 8))
 }
-PROFILES.update({
-    f"esp32c5_{size}mb_recovery": ("esp32c5", f"sdkconfig_{size}mb.defaults")
-    for size in (4, 8)
-})
 
 
 def migrate_c5_console(sdkconfig: Path) -> None:
@@ -87,15 +83,14 @@ def main() -> int:
         return 127
 
     target, profile_defaults = PROFILES[profile]
-    recovery = profile.endswith("_recovery")
-    project_dir = PROJECT_ROOT / "recovery" if recovery else PROJECT_ROOT
+    project_dir = PROJECT_ROOT
     build_dir = PROJECT_ROOT / "build" / profile
     sdkconfig = build_dir / "sdkconfig"
     migrate_coredump_stack(sdkconfig)
     defaults = f"{project_dir / 'sdkconfig.defaults'};{project_dir / profile_defaults}"
-    if target in {"esp32", "esp32s3"} and not recovery:
+    if target in {"esp32", "esp32s3"}:
         defaults += f";{PROJECT_ROOT / 'sdkconfig_xtensa.defaults'}"
-    if target == "esp32c5" and not recovery:
+    if target == "esp32c5":
         defaults += f";{PROJECT_ROOT / 'sdkconfig_c5_usb.defaults'}"
         migrate_c5_console(sdkconfig)
     actions = sys.argv[2:] or ["build"]

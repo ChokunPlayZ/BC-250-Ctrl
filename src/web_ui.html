@@ -44,7 +44,7 @@
 <section class="card" id="sessionnotice" role="status" hidden><h2 id="sessiontitle"></h2><p id="sessiondetail" class="intro"></p><button onclick="location.reload()">Reconnect / refresh</button></section>
 <section class="card" id="control" aria-labelledby="controltitle">
 <h2 id="controltitle">Power control</h2><div id="status" class="power-state">Loading…</div><small id="sensestatus">Reading the power sensor…</small>
-<div class="status-grid"><div><small>Wi-Fi</small><strong id="wifistatus">—</strong></div><div><small>Zigbee</small><strong id="zigbeestatus">—</strong></div></div>
+<div class="status-grid"><div><small>Wi-Fi</small><strong id="wifistatus">—</strong></div><div><small>Zigbee</small><strong id="zigbeestatus">—</strong></div><div><small>Firmware</small><strong id="firmwareversion">—</strong></div></div>
 <div class="actions"><button class="primary" onclick="power('on')">Power on</button><button id="poweroffbutton" onclick="power('off')">Shut down</button></div>
 <details class="more"><summary>More power actions</summary><div class="actions"><button onclick="power('toggle')">Toggle power</button><button class="danger" onclick="power('force_off')">Force off</button></div><small id="forceoffhint">Force off holds the motherboard power-switch output active and may lose unsaved work.</small></details>
 </section>
@@ -127,7 +127,7 @@ async function startPairing(){
 async function status(){if(closingAp||sessionEnded)return;try{
  let s=await api('/api/v1/status');if(closingAp||sessionEnded)return;lastStatus=s;updatePairing();$('connection').textContent='Connected';$('connection').className='badge ok';
  $('status').textContent=s.power_state.replaceAll('_',' ');$('status').className='power-state '+(s.power_state==='fault'?'bad':s.power_state==='on'||s.sensed_on?'ok':'');
- $('sensestatus').textContent=s.power_sense_available===false?'Power state follows PS_ON output; no power sensor used.':'Power sensor: '+(s.sensed_on?'on':'off');$('wifistatus').textContent=s.config_ap?'Setup AP · '+s.wifi_ip:s.wifi_connected?s.wifi_ip:'Disconnected';$('zigbeestatus').textContent=s.config_ap&&savedConfig?.radio_profile==='zigbee'?'Paused for setup':s.zigbee_joined?'Joined':s.zigbee_started?'Not joined':'Off';
+ $('sensestatus').textContent=s.power_sense_available===false?'Power state follows PS_ON output; no power sensor used.':'Power sensor: '+(s.sensed_on?'on':'off');$('wifistatus').textContent=s.config_ap?'Setup AP · '+s.wifi_ip:s.wifi_connected?s.wifi_ip:'Disconnected';$('zigbeestatus').textContent=s.config_ap&&savedConfig?.radio_profile==='zigbee'?'Paused for setup':s.zigbee_joined?'Joined':s.zigbee_started?'Not joined':'Off';$('firmwareversion').textContent=s.version||'—';
  $('apnotice').hidden=!s.config_ap;$('factorybutton').disabled=!s.config_ap;
  let p=s.psu_i2c;renderPsuStatus(p);renderPsuIdentity(p);$('otasection').hidden=!s.ota_enabled;
  }catch(e){if(closingAp||sessionEnded)return;lastStatus=null;updatePairing();$('connection').textContent='Disconnected';$('connection').className='badge bad';$('sensestatus').textContent='Connection lost. Reconnect to refresh the power state.';$('psusummary').textContent='Disconnected';$('psusummary').className='psu-summary warn';$('psustatus').textContent='Connection lost';$('psustatus').className='psu-state warn';$('psuage').hidden=true;$('psureadings').hidden=true;$('psudetail').hidden=false;$('psudetail').textContent='Reconnect to refresh PSU readings.';$('psuidentitysection').hidden=true}}

@@ -42,7 +42,7 @@ ESP-IDF firmware for controlling a BC-250 locally through optically isolated low
 
 - Tests new configuration for 30 seconds before making it permanent. If it cannot become healthy after two boot attempts, the previous configuration is restored.
 - Opens setup mode after three consecutive quick resets, so recovery does not require a dedicated button.
-- Provides standalone C5 recovery images that erase saved settings without loading GPIO assignments; see [recovery flashing](docs/RECOVERY.md).
+- Provides a USB/serial recovery tool for every supported chip that clears saved settings without replacing the firmware; see [configuration recovery](docs/RECOVERY.md).
 - Supports browser-based firmware updates on 8 MB targets, with two application slots and bootloader rollback. The 4 MB targets are updated over serial or USB.
 
 All external GPIOs are disabled by default. The firmware does not restore a previous output state during startup. With PS_ON hold enabled, the power service asserts PS_ON if it detects that the board is already on. Add external bias resistors to keep the output optocouplers off while the ESP32 is resetting or starting; see the wiring guide before connecting hardware.
@@ -73,6 +73,14 @@ python3 tools/idf_build.py esp32c5_4mb -p PORT flash monitor
 ```
 
 Choose the profile for your chip and actual flash capacity. For C5 profiles, connect the ESP32-C5's native USB Serial/JTAG port (not a USB-to-UART bridge port); `PORT` is typically `/dev/ttyACM0` on Linux or a `/dev/cu.*` device on macOS. Other profiles use the ESP-IDF default primary console for that chip, usually UART0. The helper keeps generated configuration and artifacts under `build/<profile>/`. Do not use an 8 MB image on a 4 MB module.
+
+### Firmware versions and releases
+
+The build reads Git tags for its firmware version. A build at tag `v1.2.3` reports `v1.2.3` in the boot log, serial `status`, web overview, and `/api/v1/status` response. Builds after that tag report a value such as `v1.2.3-4-gabc1234`; a modified checkout adds `-dirty`. Without a matching tag in a Git checkout, the version is the commit hash; a source archive without Git uses `0.0.0+unknown`. Reconfigure an existing build after creating or checking out a tag so ESP-IDF refreshes the embedded version.
+
+Publishing a GitHub Release from a tag such as `v1.2.3` automatically builds every profile in the table above and attaches the binaries and `SHA256SUMS` to the release. Release tags must use `vMAJOR.MINOR.PATCH` (optionally followed by a prerelease suffix such as `-rc.1`) and fit within 31 characters, the ESP-IDF version field limit. The release build fails if the checked-out tag does not match the version embedded in the firmware.
+
+Choose assets by target and flash capacity. `bc250_ctrl-<profile>.bin` is the application image; on 8 MB profiles, upload it through the web firmware update page. `bc250_ctrl-<profile>-full.bin` contains the bootloader, partition table, and application for serial/USB flashing at address `0x0`. Full images replace the flash layout and erase saved settings in the padded regions; they are not OTA files. Releases also include `bc250_recover.py`, a [USB/serial recovery tool](docs/RECOVERY.md) for clearing settings while keeping the installed firmware.
 
 ESP32-H chips have no Wi-Fi. Configure them through the serial shell: assign the required power GPIOs, set `configured on`, then `save`. Zigbee starts after reboot and joins automatically when factory new; `zigbee commission` retries joining. See [serial setup](docs/SERIAL.md). An H chip needs a Zigbee coordinator for remote control, or configured physical buttons for local control.
 
@@ -107,7 +115,7 @@ The conservative GPIO guidance lists for the original boards are:
 - ESP32-C5: GPIO 0, 1, 4, 5, 6, 8, 9, 10, 23, 24
 - ESP32-C6: GPIO 0, 1, 2, 3, 6, 7, 10, 11, 18, 19, 20, 21, 22, 23
 
-**ESP32-C5 GPIO 12 and 14 are blocked:** saved assignments have been reported to prevent booting on the NodeMCU ESP32-C5 Mini. All C5 profiles reject these pins for outputs, inputs, buttons, status LEDs, and I²C scans, even with the legacy override enabled. Existing settings using these pins enter recovery mode before GPIO services start. A unit that cannot run its current firmware can be cleared with the [standalone recovery image](docs/RECOVERY.md). C6 profiles do not have these exclusions.
+**ESP32-C5 GPIO 12 and 14 are blocked:** saved assignments have been reported to prevent booting on the NodeMCU ESP32-C5 Mini. All C5 profiles reject these pins for outputs, inputs, buttons, status LEDs, and I²C scans, even with the legacy override enabled. Existing settings using these pins enter recovery mode before GPIO services start. A unit that cannot run its current firmware can be cleared with the [USB/serial recovery tool](docs/RECOVERY.md). C6 profiles do not have these exclusions.
 
 For the added targets, no generic pin list is recommended because exposed pins vary by module. The firmware rejects GPIOs that the selected chip does not support for the assigned input or output role. Classic ESP32 GPIO 34–39 are also excluded because this firmware configures an internal pull on every input, and those pins have none. Check the exact board schematic for flash, USB, strapping, and header use. Other chip-valid pins produce advisory warnings and can be saved without an override, except for the blocked C5 pins above. Invalid GPIO values, duplicate role assignments, and missing required pins prevent saving. The web interface validates basic inputs as you edit; target-specific GPIO errors are returned on save.
 

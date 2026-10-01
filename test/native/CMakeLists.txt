@@ -85,12 +85,6 @@ target_compile_options(bc250_led_tests PRIVATE -Wall -Wextra -Werror)
 target_include_directories(bc250_led_tests PRIVATE test_wifi/include support ../../src)
 add_test(NAME bc250_led_tests COMMAND bc250_led_tests)
 
-add_executable(bc250_recovery_tests test_recovery/test_main.c ../../recovery/main/recovery_main.c)
-target_compile_features(bc250_recovery_tests PRIVATE c_std_11)
-target_compile_options(bc250_recovery_tests PRIVATE -Wall -Wextra -Werror)
-target_include_directories(bc250_recovery_tests PRIVATE test_recovery/include support)
-add_test(NAME bc250_recovery_tests COMMAND bc250_recovery_tests)
-
 add_executable(bc250_wifi_tests test_wifi/test_main.c ../../src/wifi_service.c)
 target_compile_features(bc250_wifi_tests PRIVATE c_std_11)
 target_compile_options(bc250_wifi_tests PRIVATE -Wall -Wextra -Werror)

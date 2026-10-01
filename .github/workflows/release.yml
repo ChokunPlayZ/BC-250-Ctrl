@@ -1,0 +1,102 @@
+name: release firmware
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify firmware version matches release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          [[ ${#RELEASE_TAG} -le 31 ]]
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          test "$(git describe --tags --exact-match --match 'v[0-9]*' HEAD)" = "$RELEASE_TAG"
+
+  build:
+    needs: verify-tag
+    runs-on: ubuntu-latest
+    env:
+      BC250_RELEASE_VERSION: ${{ github.event.release.tag_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { profile: esp32_4mb, target: esp32, idf: v6.1, partitions: partitions_4mb.csv }
+          - { profile: esp32_8mb, target: esp32, idf: v6.1, partitions: partitions_8mb.csv }
+          - { profile: esp32s3_4mb, target: esp32s3, idf: v6.1, partitions: partitions_4mb.csv }
+          - { profile: esp32s3_8mb, target: esp32s3, idf: v6.1, partitions: partitions_8mb.csv }
+          - { profile: esp32c3_4mb, target: esp32c3, idf: v5.5.4, partitions: partitions_4mb.csv }
+          - { profile: esp32c3_8mb, target: esp32c3, idf: v5.5.4, partitions: partitions_8mb.csv }
+          - { profile: esp32c5_4mb, target: esp32c5, idf: v5.5.4, partitions: partitions_4mb.csv }
+          - { profile: esp32c5_8mb, target: esp32c5, idf: v5.5.4, partitions: partitions_8mb.csv }
+          - { profile: esp32c6_4mb, target: esp32c6, idf: v6.0.1, partitions: partitions_4mb.csv }
+          - { profile: esp32c6_8mb, target: esp32c6, idf: v6.0.1, partitions: partitions_8mb.csv }
+          - { profile: esp32c61_4mb, target: esp32c61, idf: v5.5.4, partitions: partitions_4mb.csv }
+          - { profile: esp32c61_8mb, target: esp32c61, idf: v5.5.4, partitions: partitions_8mb.csv }
+          - { profile: esp32h2_4mb, target: esp32h2, idf: v5.5.4, partitions: partitions_4mb.csv }
+          - { profile: esp32h21_4mb, target: esp32h21, idf: v6.1, partitions: partitions_4mb.csv }
+          - { profile: esp32h4_4mb, target: esp32h4, idf: v6.1, partitions: partitions_4mb.csv }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build ${{ matrix.profile }}
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf }}
+          target: ${{ matrix.target }}
+          path: .
+          command: python tools/idf_build.py ${{ matrix.profile }} build merge-bin -o bc250_ctrl-full.bin
+      - name: Check application image size
+        run: python tools/check_image_size.py ${{ matrix.partitions }} build/${{ matrix.profile }}/bc250_ctrl.bin
+      - name: Check embedded firmware version
+        run: strings "build/${{ matrix.profile }}/bc250_ctrl.bin" | grep -Fx "$BC250_RELEASE_VERSION"
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cp "build/${{ matrix.profile }}/bc250_ctrl.bin" "release/bc250_ctrl-${{ matrix.profile }}.bin"
+          cp "build/${{ matrix.profile }}/bc250_ctrl-full.bin" "release/bc250_ctrl-${{ matrix.profile }}-full.bin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.profile }}
+          path: release/*.bin
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: release
+          merge-multiple: true
+      - name: Create checksums
+        run: |
+          cp tools/recover.py release/bc250_recover.py
+          cd release
+          sha256sum *.bin bc250_recover.py > SHA256SUMS
+      - name: Attach firmware to GitHub Release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" ./* --clobber --repo "$GITHUB_REPOSITORY"

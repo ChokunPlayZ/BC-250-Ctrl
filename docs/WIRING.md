@@ -1,6 +1,6 @@
 # Wiring and installation
 
-On the NodeMCU ESP32-C5 Mini, do not assign GPIO 12 or 14: saved assignments have been reported to prevent booting. Both are blocked in every C5 firmware profile, including I²C scans. If settings already prevent startup, use the [recovery image](RECOVERY.md) and move the signals to other pins.
+On the NodeMCU ESP32-C5 Mini, do not assign GPIO 12 or 14: saved assignments have been reported to prevent booting. Both are blocked in every C5 firmware profile, including I²C scans. If settings already prevent startup, use the [USB/serial recovery tool](RECOVERY.md) and move the signals to other pins.
 
 ## Required parts
 
