@@ -1,10 +1,10 @@
 # Wiring and installation
 
-On the NodeMCU ESP32-C5 Mini, do not assign GPIO 12 or 14: saved assignments have been reported to prevent booting. Both are blocked in every C5 firmware profile, including I²C scans. If settings already prevent startup, use the [USB/serial recovery tool](RECOVERY.md) and move the signals to other pins.
+This guide covers the electrical connections. Choose a [power method and GPIO assignments](CONFIGURATION.md) before wiring. On C5, GPIO 12 and 14 are blocked for every role; see [GPIO selection](CONFIGURATION.md#gpio-selection) and [recovery](RECOVERY.md) if an older configuration used them.
 
 ## Required parts
 
-- A supported ESP32, S3, C3, C5, C6, C61, H2, H21, or H4 board with adequate exposed GPIOs and the correct flash profile. H boards use serial setup and native Zigbee because they have no Wi-Fi.
+- A supported ESP32 board with enough exposed GPIOs and the correct [flash profile](BUILD.md#supported-profiles)
 - Up to three high-CTR phototransistor optocouplers for PS_ON, power-button, and power sensing; PS_ON latch mode only needs the PS_ON output
 - 430 Ω resistors for 3.3 V-driven optocoupler LEDs
 - External roughly 10 kΩ inactive-state bias resistors for both output GPIOs
@@ -35,9 +35,9 @@ Use a high-CTR optocoupler that can reliably pull `PS_ON#` low with the selected
 
 In the sensed startup methods, the ESP32 releases PS_ON after power is detected and the handoff delay expires (1 second by default). Enable **Keep PS_ON closed while board power is detected** under **Power wiring & timing** to keep the ESP32 optocoupler conducting as well. This also asserts PS_ON when the board starts externally or is already on when the power service starts. A PS_ON GPIO is required even with the motherboard-switch-only startup method. The setting defaults to off, including when upgrading older saved configurations.
 
-Select **PS_ON latch (no power sense)** to close PS_ON on an On or Toggle command and keep it closed until an Off or another Toggle command. This mode does not read power sense or use the motherboard switch output; set those GPIOs to `-1` if unwired. Configure a controller-side physical button's short press as **Toggle** under Custom buttons, or use Zigbee On/Off. Opening PS_ON removes power immediately, so the operating system does not get a graceful shutdown. The controller starts with PS_ON open after reset or power loss and cannot detect power changes made outside the controller.
+With **Keep PS_ON closed** enabled, normal shutdown and force-off still use the motherboard switch. PS_ON stays closed until the filtered power-sense input turns off, including if shutdown times out. Sense must therefore indicate the board's running state, not merely that the PSU has voltage, or the hold could keep itself on. Startup timeout without detected board power still releases PS_ON. ESP32 reset and recovery do not maintain the hold, so keep the board's existing hold path connected.
 
-With this option enabled, normal shutdown and force-off still use the motherboard switch. PS_ON stays closed until the filtered power-sense input turns off, including if shutdown times out; it then opens after the configured sense-off filter. Sense must therefore indicate the board's running state, not merely that the PSU has voltage, or the hold could keep itself on. Startup timeout without detected board power still releases PS_ON. ESP32 reset and recovery do not maintain the hold, so keep the board's existing hold path connected.
+For **PS_ON latch (no power sense)**, PS_ON remains closed until an Off or Toggle command. This mode does not read power sense or use the motherboard switch output. Opening PS_ON removes power immediately without a graceful OS shutdown. See [power methods](CONFIGURATION.md#power-methods) for required GPIOs and control behavior.
 
 For the recommended active-high GPIO drive, add a roughly 10 kΩ pulldown from each output GPIO to ESP ground. This keeps both optocoupler LEDs off while the ESP32 is in reset, before firmware configures its pins. If an active-low driver circuit is used instead, bias its input to the electrically inactive high level. Verify the actual dev board's reset/boot behavior with a meter before connecting the BC-250.
 
@@ -108,37 +108,13 @@ Configuration AP patterns take precedence over joining; the joining pattern take
 
 ## Optional HP Common Slot PSU I²C
 
-Connect the PSU PIC's SDA and SCL to configured ESP32 SDA/SCL pins, and connect their signal grounds. The **ESP32 side must use 3.3 V logic**; never apply 5 V to ESP32 GPIOs. Verify the PSU/adapter's idle bus voltage before connecting: the [DPS-1200FB reverse-engineering notes](https://github.com/raplin/DPS-1200FB#connecting-i2c) describe weak pull-ups to 5 V on that model. Use an appropriate bidirectional I²C level shifter if the PSU side uses 5 V. Provide suitable external pull-ups on the 3.3 V side, typically 2.2–4.7 kΩ from each line to 3.3 V. Firmware enables weak internal pull-ups as a fallback; these do not replace proper pull-ups or voltage translation. These I²C connections are not optically isolated, so check grounding and the exact PSU connector pinout before wiring. Leave the feature disabled until the connections are verified.
-
-The [DPS-1200FB Common Slot pinout measured by slundell](https://github.com/slundell/dps_charger#connection) lists connector contact 30 as signal ground, 31 as SCL, and 32 as SDA. For an ESP32 configured with SDA GPIO 1 and SCL GPIO 2, that means contact 32 to GPIO 1, contact 31 to GPIO 2, and contact 30 to ESP32 ground. The connector has contacts on both sides; verify numbering and orientation before applying power. This source documents a DPS-1200FB, so confirm the DPS-460EB connector electrically rather than assuming every model is identical.
-
-The PIC's 7-bit address is usually `0x5F` when address pins A0–A2 are left high, or `0x58` when all three are low. Other combinations use `0x59`–`0x5E`. The EEPROM often has an address eight lower (`0x50`–`0x57`), but the observed DPS-460EB scan found `0x57` and `0x58`; address ACK alone does not establish which device is which. Some models answer only while the PSU is running. The firmware polls read-only registers and reports unavailable data if a transaction or reply checksum fails. It probes the EEPROM range and accepts checksum-verified FRU identification independently of telemetry, retrying once a minute. Manufacturer, product, part number, revision, serial/CT number, board part number, and rated capacity appear when the EEPROM provides valid fields. Unsupported or corrupt FRU data appears as an identification error; it does not suppress PIC telemetry. The firmware only changes the EEPROM read pointer and never writes EEPROM contents. There is no known I²C on/off command; switching an HP PSU's output requires a separate connection to its enable signal. The [reference sketch](https://github.com/ButtSimpleIdeas/DPS-1200-I2C/blob/master/dps1200_read_volts_fan/dps1200_read_volts_fan.ino) reports temperature in Fahrenheit; this firmware converts it to Celsius. The fan value is exposed as a raw reading because its RPM calibration has not been confirmed across models. The DPS-460EB's PIC protocol and EEPROM contents have not yet been verified on hardware.
-
-On this PSU, telemetry is available only while the PSU is on (PS_ON bridged). An unavailable reading while it is off is expected.
-
-The [DPS-1200/750 reverse-engineering project](https://github.com/ButtSimpleIdeas/DPS-1200-I2C/blob/master/Readme.md) found a proprietary PIC command format rather than standard PMBus; this is the telemetry format implemented here. The [older Common Slot article](http://colintd.blogspot.com/2016/10/hacking-hp-common-slot-power-supplies.html) calls contacts 31/32 PMBus when discussing the physical connector. [Linux also lists a Delta "DPS-460" PMBus device](https://github.com/torvalds/linux/blob/master/drivers/hwmon/pmbus/pmbus.c), but that name alone does not establish whether it covers a DPS-460EB. A protocol mismatch can prevent telemetry *after* a device responds at an I²C address; it cannot by itself explain SCL held low before the first scan probe. Confirm the bus and device address before attempting another command format.
-
-### Diagnosing I²C timeouts
-
-Run `i2c scan <SDA> <SCL>` in the serial shell, or **Scan I²C bus** in the web UI. For SDA GPIO 1 and SCL GPIO 2, use `i2c scan 1 2`. Both are valid chip GPIOs on C5/C6; C5's conservative pin list gives GPIO 2 an advisory rather than blocking it. Check the board's actual labels and ensure neither pin is assigned to another controller role. A complete scan tries all 112 addresses from `0x08` to `0x77`. Ordinary NACKs continue; one address-specific timeout also permits the sweep to continue if both lines return high. If SCL is already low, the scan stops before the first probe and reports 0 of 112 addresses. A held-low line during probing or the three-second time limit also stops it early, with the UI reporting how many addresses were tried and any devices found so far. `0x08` in an older timeout means the first probe failed; it is not evidence that the PSU uses that address. A compatible PSU may show a PIC at `0x58`–`0x5F` and a paired EEPROM at `0x50`–`0x57`; an EEPROM alone does not confirm the PIC is responding.
-
-After enabling monitoring and saving/rebooting, `status` and the web PSU status display the last sampling error. The firmware allows 20 ms of clock stretching (subject to the chip driver's limit), keeps the register command and reply together under a bus lock, and clears/retries the entire pair once after a timeout. Failed samples are retried at the configured polling interval.
-
-- `SDA ...=low` or `SCL ...=low` at failure: check signal ground, swapped or shorted wires, pull-ups, level shifting, and whether the PSU is powered. Measure both lines at idle; each should be high on the ESP32 side. Disconnect the PSU to help isolate which side is holding a line low.
-- If the scan completes with no devices when the PSU is disconnected but reports SCL low when it is attached, measure GPIO SCL against ESP32 ground with the PSU connected but no scan running. Check the shared ground and connector contact, then check idle voltage on both sides of any level shifter. A clock line held low cannot be fixed by scanning more addresses; do not connect the ESP32 until the PSU-side voltage is known to be safe for its GPIOs.
-- Both lines high with a timeout: check the actual header pins, pull-up strength, wiring length/noise, and PSU compatibility; a single GPIO snapshot cannot prove correct timing.
-- `ESP_ERR_INVALID_STATE` on a register write: in ESP-IDF 5.5.4 this can mean the transaction ended before completion, including a NACK during the command. A scan ACK at the same address proves only that the device answered its address. Check the register protocol and signal integrity; capture SDA/SCL with a logic analyzer to distinguish a data-byte NACK from a timing fault.
-- `ESP_ERR_INVALID_RESPONSE`: the device did not acknowledge a transfer. Check the selected PIC address and PSU power.
-- `reply checksum failed`: communication completed but the reply was invalid. Check signal quality and whether the PSU implements this protocol.
-- `I2C bus busy`: another scan or client held the shared bus for too long. Retry; this message does not diagnose the electrical wiring.
-
-On ESP-IDF 5.5.4/C5, a timeout can also produce `i2c.common: GPIO 1 is not usable, maybe conflict with others` for both SDA/SCL. The [driver's bus-clear path](https://github.com/espressif/esp-idf/blob/v5.5.4/components/esp_driver_i2c/i2c_master.c) configures the pins again, and [pin configuration](https://github.com/espressif/esp-idf/blob/v5.5.4/components/esp_driver_i2c/i2c_common.c) warns about its own existing GPIO reservations. Warnings during recovery therefore do not establish that those pins are forbidden. If they appear at initial bus creation before any failed transfer, investigate an actual peripheral conflict instead.
+The PSU PIC and identification EEPROM are optional, read-only I²C sources. Check bus voltage, level shifting, connector orientation, addresses, and fault diagnostics in the [PSU monitoring guide](PSU.md) before connecting them to ESP32 GPIOs.
 
 ## Bring-up order
 
 1. Flash and boot with every GPIO role disabled.
-2. Verify the setup AP and recovery sequence.
-3. Connect and validate power sensing only.
-4. Configure one output, test it against an optocoupler loopback fixture, then connect it to the BC-250.
-5. Add the second output and test all selected sequences.
+2. Verify the setup AP and recovery sequence on Wi-Fi capable targets, or the serial shell on H targets.
+3. For a sensed method, connect and validate power sensing first. Latch mode has no sense input.
+4. Configure PS_ON or the motherboard switch output, test it against an optocoupler loopback fixture, then connect it to the BC-250.
+5. Add any second output required by the selected method and test its sequence.
 6. Only then enable BLE/Zigbee automation.

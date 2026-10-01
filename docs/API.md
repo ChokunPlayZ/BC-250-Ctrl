@@ -2,7 +2,15 @@
 
 The API is available on Wi-Fi targets in Wi-Fi operation. It is also available on their open configuration AP, which requires neither a Wi-Fi password nor HTTP Basic authentication. Normal station-mode requests use HTTP Basic authentication with username `admin`. ESP32-H targets have no Wi-Fi or HTTP API; use the serial shell and Zigbee.
 
-All configuration responses redact the Wi-Fi password and password hash. Sending an empty `wifi_password` preserves the current credential.
+All configuration responses redact the Wi-Fi password and password hash. Sending an empty `wifi_password` preserves the current credential. For AP access, expiry, and network security, see [First setup](SETUP.md#setup-ap-behavior). Zigbee clusters, attribute scaling, and PSU report timing are documented in the [Zigbee device definition](ZIGBEE.md#device-definition-on-the-wire).
+
+## Endpoint index
+
+| Task | Endpoints |
+|---|---|
+| Observe and control | `GET /api/v1/status`, `GET /api/v1/events`, `POST /api/v1/power` |
+| Configure and discover | `GET /api/v1/config`, `PUT /api/v1/config`, `GET/POST /api/v1/ble/scan`, `POST /api/v1/i2c/scan`, `GET /api/v1/psu/data` |
+| Radio and recovery | `POST /api/v1/wifi/ap/close`, `POST /api/v1/zigbee`, `POST /api/v1/factory-reset`, `POST /api/v1/update` |
 
 ## Endpoints
 
@@ -36,7 +44,7 @@ Returns the complete non-secret configuration used by the setup UI, plus `recomm
 
 ### `PUT /api/v1/config`
 
-Applies a partial JSON patch, validates GPIO ranges, blocked pins, required pins, conflicts, and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds. `psu_i2c` accepts `enabled`, `sda_gpio`, `scl_gpio`, `address` (decimal 88–95 for `0x58`–`0x5F`), and `poll_interval_ms` (500–60000). It is disabled by default. `radio_profile` accepts only `wifi` or `zigbee`; the removed `hybrid` value and other invalid profiles return `400 Bad Request`.
+Applies a partial JSON patch, validates GPIO ranges, blocked pins, required pins, conflicts, and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds. `psu_i2c` accepts `enabled`, `sda_gpio`, `scl_gpio`, `address` (decimal 88–95 for `0x58`–`0x5F`), and `poll_interval_ms` (500–60000). It is disabled by default. `radio_profile` accepts only `wifi` or `zigbee` when supported by the target. The removed `hybrid` value and other invalid profiles return `400 Bad Request`. For method requirements and GPIO restrictions, see [Configuration](CONFIGURATION.md).
 
 `hold_ps_on` is a boolean, default `false`. Set `{"hold_ps_on":true}` to keep the ESP32's PS_ON contact closed whenever board power is detected, including external startup, an already-running board at service startup, and shutdown until power sense turns off. It requires an assigned PS_ON GPIO even with button-only startup. A shutdown timeout preserves the hold while the board is still sensed on. This field is also returned by `GET /api/v1/config`; omitting it from a patch preserves its current value.
 
@@ -69,22 +77,6 @@ Streams server-sent `status` events when the state or optocoupled sense changes,
 Send `{"action":"commission"}` to start pairing. On the setup AP, this requires a saved, configured Zigbee profile. It returns `202 Accepted` with `{"accepted":true,"disconnecting":true}`, then closes Wi-Fi and waits up to 15 seconds for Zigbee initialization before requesting joining. Factory-new automatic joining is not duplicated, and an existing joined network is preserved. Follow the result on the coordinator or serial shell; the HTTP acknowledgement does not mean pairing has completed. If initialization or queueing fails, the controller attempts to reopen setup Wi-Fi.
 
 Wi-Fi mode, incomplete setup, or another pending radio change returns `409 Conflict` without closing Wi-Fi. Without the AP, commissioning still requires Zigbee to be running. `{"action":"reset"}` retains the existing behavior: Zigbee must be running, so use serial `zigbee reset` after closing the AP to clear only the Zigbee network.
-
-### Zigbee PSU telemetry
-
-When PSU I²C monitoring and Zigbee are both enabled, endpoint 1 exposes the standard Electrical Measurement cluster (`0x0B04`) and Analog Input cluster (`0x000C`). The controller sends attribute reports to coordinator short address `0x0000`, endpoint 1. It sends the first sample after joining, then available samples at least 10 seconds apart (or at the configured PSU poll interval if longer). It reports the transition to unavailable once, and reports again when readings return.
-
-| Reading | Cluster attribute | Zigbee value and scale |
-|---|---|---|
-| PSU input voltage | RMSVoltage `0x0505` | unsigned, value ÷ 10 = V |
-| PSU input current | RMSCurrent `0x0508` | unsigned, value ÷ 100 = A |
-| PSU output voltage | DCVoltage `0x0100` | signed, value ÷ 100 = V |
-| PSU output current | DCCurrent `0x0103` | signed, value ÷ 10 = A |
-| PSU fan reading | Analog Input PresentValue `0x0055` | raw PIC value as a float; **not RPM** |
-
-The corresponding Electrical Measurement multiplier attributes are 1 and divisors are 10 or 100 as shown above. On an invalid PSU sample, the AC attributes become `0xFFFF`, the DC attributes become `0x8000`, and Analog Input StatusFlags `0x006F` sets the fault bit (`0x02`). The fan's PresentValue is then zero and must be ignored while the fault bit is set. Zigbee coordinators can read these attributes directly; presenting each as a named sensor may require a coordinator-specific device definition.
-
-See [the Zigbee guide](ZIGBEE.md) for pairing, the complete endpoint and scaling definitions, reporting behavior, and supplied [Zigbee2MQTT](zigbee/zigbee2mqtt/bc250.mjs) and [ZHA](zigbee/zha/bc250.py) integration files. On PSU failure, the fault flag invalidates any cached fan reading; firmware does not report the zero fan value as a new measurement.
 
 ### `POST /api/v1/factory-reset`
 

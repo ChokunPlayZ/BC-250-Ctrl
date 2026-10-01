@@ -2,66 +2,40 @@
 
 The ESP32-C5/C6/H2/H21/H4 controller joins an existing Zigbee network as an always-powered **router**. Endpoint 1 accepts standard On, Off, and Toggle commands. Its On/Off state follows the optocoupled power-sense input in sensed modes and the PS_ON output in latch mode. Optional HP Common Slot PSU monitoring adds voltage, current, and raw fan readings.
 
-This guide covers commissioning, Home Assistant ZHA, Zigbee2MQTT, the endpoint definition, and recovery. It describes the implementation in [zigbee_service.c](../src/zigbee_service.c); the supplied definitions are local integration files, not bundled upstream device support. Real coordinator and hardware acceptance is still required; see [verification](#verification).
+This guide covers commissioning, coordinator integrations, endpoint definitions, and Zigbee network reset. The supplied definitions are local integration files, not bundled upstream device support. Hardware acceptance is covered in [Verification](TESTING.md#radio-interoperability).
 
 ## Before pairing
 
-1. Build and flash the correct C5/C6/H and flash-size profile using the [README](../README.md#build-targets). H21/H4 require ESP-IDF 6.1.
-2. Supply the controller from standby power so it stays online when the BC-250 is off. Complete the isolated wiring for the selected power method in [WIRING.md](WIRING.md). Configure the GPIOs, polarities, and power method before expecting Zigbee commands to control the board.
-3. Set up a Zigbee coordinator using either ZHA or Zigbee2MQTT. The controller firmware is a router, not a coordinator. A device can belong to only one network at a time; see [ZHA's network concepts](https://www.home-assistant.io/integrations/zha/#zigbee-concepts).
-4. If you want PSU sensors, enable PSU I²C, assign SDA/SCL, select the PIC address, and save **before the first device interview**. The default address is `0x5F` (decimal 95). Confirm valid readings with serial `status`. See [HP PSU wiring](WIRING.md#optional-hp-common-slot-psu-i²c) for the electrical connections.
-
-### Controller settings
-
-On C5/C6, join the open `BC250-Ctrl-XXXX` setup network and visit `http://192.168.4.1/`. Select **Zigbee** under Connection mode, then save and reboot. H2/H21/H4 have no Wi-Fi; use the [serial first-setup steps](SERIAL.md#first-setup-on-esp32-h). An already wired/configured controller can also edit these settings in the serial shell:
-
-```text
-set radio zigbee
-set zigbee_channel 0
-set zigbee_manufacturer BC250
-set zigbee_model "BC250 Controller"
-config
-save
-```
-
-During first setup, also provide the required GPIO settings and `set configured on` before `save`. The example above changes radio settings only; it does not assign pins.
+1. Flash the matching [C5, C6, or H profile](BUILD.md#supported-profiles) and power the controller from standby power.
+2. Complete [isolated power wiring](WIRING.md) and [first setup](SETUP.md). Select `zigbee` as the radio profile and save the required power GPIOs before testing remote control.
+3. Prepare a Zigbee coordinator running ZHA or Zigbee2MQTT. The controller is a router and belongs to one network at a time.
+4. If you want PSU sensors, verify [PSU wiring and readings](PSU.md) and enable monitoring **before the first coordinator interview**. The default PIC address is `0x5F` (decimal 95). Confirm valid readings with serial `status`.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `radio_profile` (shell alias `radio`) | `wifi` | Must be `zigbee` for the Zigbee service to start |
-| `zigbee_channel` | `0` | `0` searches channels 11–26; a value from 11–26 gives that channel priority, with all channels still in the secondary scan set |
+| `radio_profile` | `wifi` on C5/C6; `zigbee` on H | Must be `zigbee` for the Zigbee service to start |
+| `zigbee_channel` | `0` | `0` scans channels 11–26; 11–26 gives one channel priority |
 | `zigbee_manufacturer` | `BC250` | Basic ManufacturerName, up to 32 bytes |
 | `zigbee_model` | `BC250 Controller` | Basic ModelIdentifier, up to 32 bytes |
 | `psu_i2c.enabled` | `false` | Adds Electrical Measurement and Analog Input clusters at boot |
-| `psu_i2c.poll_interval_ms` | `2000` | Local PSU sampling interval; valid range 500–60000 ms |
 
-The channel setting does not change the coordinator's network channel or move a paired device to a different network. Keep the identity strings at their defaults when using the supplied device definitions. Matching is case sensitive, including spaces; the configured hostname does not affect Zigbee matching.
-
-### Close the setup AP
-
-**Zigbee is paused for the entire setup AP session.** In the portal, expand **Setup Wi-Fi options**, select **Turn off setup Wi-Fi** and confirm **Turn off and disconnect**, or disconnect every Wi-Fi client and wait for the five-minute idle timeout. A connected client keeps the AP open. After it closes, Wi-Fi stops in Zigbee mode and the router resumes with its saved network data. BLE scanning and the serial shell remain available.
-
-For manual pairing from the portal, use **Start pairing** on the overview, then **Turn off Wi-Fi & pair**. Save or discard pending edits first. The controller acknowledges the request before disconnecting the page, closes Wi-Fi, and waits for Zigbee to initialize. If startup fails, it attempts to reopen setup Wi-Fi. Pairing progress appears on the coordinator and serial shell. An existing saved network is preserved; this button does not reset pairing.
-
-Network reset still uses serial commands or a configured local button with the AP closed. A successful 30-second configuration health check does not prove Zigbee has joined.
+Keep the default identity strings when using the supplied coordinator definitions. Matching is case sensitive. The channel preference does not change a coordinator's network channel or move an already paired device.
 
 ## Pairing and network recovery
 
 1. Enable **permit join / add device** on the coordinator.
-2. In the portal, select **Start pairing**, then **Turn off Wi-Fi & pair**. Wi-Fi closes and the page disconnects. A factory-new Zigbee stack also starts joining automatically whenever it starts.
-3. To retry, reopen setup Wi-Fi with a configured button or `wifi ap` and use **Start pairing**, or enter `zigbee commission` with the AP closed. This preserves controller settings.
-4. Watch the shell for `Zigbee: joined network.` and run `status`. Its Zigbee line should show `joined`. A configured status LED flashes twice per second while joining; messages still appear with `logs off`.
-5. Wait for the coordinator's interview/configuration to finish. Test On and Off and compare the displayed state with serial `status` and the connected PS_ON output. In sensed modes, also compare the hardware power sense.
+2. On a C5/C6 setup AP, choose **Start pairing** then **Turn off Wi-Fi & pair**. Save or discard pending edits first. The AP closes before the Zigbee router starts. On an H target, or when the AP is already closed, a factory-new router begins joining automatically after startup; enter `zigbee commission` to retry.
+3. Watch the serial shell for `Zigbee: joined network.` and confirm `status` shows `joined`. A configured status LED flashes twice each second while joining. Wait for the coordinator's interview to finish before testing On/Off control.
 
-Commands are asynchronous: `Zigbee joining request queued.` acknowledges the request, not the completed join. A failed join prints retry guidance. Ordinary reboot and closing the AP reuse the saved network data; commissioning is not needed after every restart. The local `joined` flag reflects stack initialization/steering and is not a continuous connectivity test, so also check coordinator communication.
+The setup AP pauses Zigbee for its entire session. A connected Wi-Fi client keeps the AP open; [setup AP behavior](SETUP.md#setup-ap-behavior) explains closure and expiry. The HTTP pairing response and serial queued message acknowledge a request, not a completed join. The local joined flag is not a continuous link-health check; confirm coordinator communication. Reboot and AP closure preserve pairing, so normal restarts do not need another commission command.
 
 ### Move to another network
 
 1. Remove the device from the old coordinator when available.
-2. With the AP closed, run `zigbee reset`. This clears Zigbee datasets and restarts the controller while retaining GPIO, radio, BLE, and PSU settings.
-3. Enable permit join on the new coordinator and allow automatic joining after restart. If needed, run `zigbee commission` again.
+2. With the AP closed, run `zigbee reset`. This clears only Zigbee datasets and restarts the controller while retaining GPIO, radio, BLE, and PSU settings.
+3. Enable permit join on the new coordinator. The factory-new router joins after restart; run `zigbee commission` if needed.
 
-`factory reset ERASE ALL` and the portal's **Erase all settings** perform a full NVS reset, including controller configuration and pairing. Use them only when you intend to configure the controller again. A local button can be assigned `zigbee_commission` or `zigbee_reset`; choose its gesture deliberately, since network reset removes pairing.
+A full [factory reset](RECOVERY.md) clears controller settings and Zigbee pairing. A configured local button can also issue `zigbee_commission` or `zigbee_reset`; choose its gesture deliberately.
 
 ## Zigbee2MQTT
 
@@ -172,7 +146,7 @@ The SDK constructs an On/Off Light endpoint, then firmware changes its device ID
 
 On/Off attribute `0x0000` is a ZCL boolean. Standard commands are Off `0x00`, On `0x01`, and Toggle `0x02`. Attribute changes request the normal power-service actions; local sense updates do not issue another power command. The power state machine handles timings, conflicting requests, and fault cooldown. Zigbee acknowledgement does not guarantee that the BC-250 completed its startup or shutdown.
 
-The On/Off value is refreshed from the optocoupled sense input in sensed modes and from the commanded PS_ON state in latch mode. It does not expose `starting`, `stopping`, or fault details. A coordinator can briefly show its requested state while a command is being processed. In latch mode there is no independent hardware confirmation, and Off opens PS_ON immediately. Force-off, configuration editing, BLE presence lists, and the detailed power state are available through local controls/API/serial, not dedicated Zigbee commands or sensors. Zigbee OTA is not implemented; use the [documented update paths](../README.md#recovery-and-updates).
+The On/Off value is refreshed from the optocoupled sense input in sensed modes and from the commanded PS_ON state in latch mode. It does not expose `starting`, `stopping`, or fault details. A coordinator can briefly show its requested state while a command is being processed. In latch mode there is no independent hardware confirmation, and Off opens PS_ON immediately. Force-off, configuration editing, BLE presence lists, and the detailed power state are available through local controls/API/serial, not dedicated Zigbee commands or sensors. Zigbee OTA is not implemented; use the [documented update paths](BUILD.md#release-assets-and-updates).
 
 ### PSU attributes and scaling
 
@@ -219,15 +193,4 @@ PSU internal temperature is currently available through serial, web status, and 
 | Switch command succeeds but power does not change | Check wiring/polarity and serial `status`; for sensed modes, also check sense, fault state, and cooldown. Acknowledgement only means the Zigbee command was processed. |
 | No PSU reports on another coordinator implementation | Firmware targets coordinator endpoint 1. Confirm that endpoint accepts Electrical Measurement and Analog Input reports. |
 
-## Verification
-
-The supplied definitions were checked locally with `zigbee-herdsman-converters` 26.108.1, `zha-quirks` 2.2.2, `zha` 2.2.2, and `zigpy` 2.2.0. Local checks cover loading, optional-cluster handling, measurement conversion, unavailable values, and fan fault/recovery handling. These checks do not establish compatibility with every Home Assistant release or replace an actual device interview.
-
-On your real network, use the [radio interoperability checklist](TESTING.md#radio-interoperability), plus:
-
-- Pair with PSU monitoring off: confirm one usable switch and no fabricated PSU measurements.
-- Pair with PSU monitoring on: confirm both extra clusters, named sensors, and units. Compare all four measurements and the raw fan value with serial `status`.
-- Request On, Off, and Toggle; also change power locally and confirm final Zigbee state follows sense in sensed modes or PS_ON in latch mode.
-- Observe periodic PSU reports, interrupt a PSU read, and verify sentinels clear numeric sensors and the fault flag clears the cached fan. Restore communication and verify recovery without re-pairing.
-- Open/close the setup AP and restart the controller/coordinator; confirm pairing survives and reports resume.
-- Test network reset separately from a full factory reset. After changing identity or optional-cluster settings, verify matching and a fresh interview.
+For hardware and coordinator checks, see [Verification](TESTING.md#radio-interoperability).

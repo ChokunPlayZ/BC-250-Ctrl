@@ -2,8 +2,18 @@
 
 ## Automated checks
 
-- Run native state-machine, BLE matcher, shell parsing, typed settings, GPIO advisory/exclusion, Wi-Fi mode/client inactivity tests, Zigbee pause/resume lifecycle tests, status LED pattern tests, and I²C scan/PSU transfer tests (recovery, partial scan and timeout budget, checksum/NACK failure, EEPROM identity and capacity parsing, GPIO diagnostics, busy bus, and concurrent scan/startup). Run the recovery tool's partition-layout checks with `python3 -m unittest discover -s test/tools`.
-- Build the 4 MB profile for ESP32, S3, C3, C5, C6, C61, H2, H21, and H4; build 8 MB C5/C6. Release builds cover every documented profile. H21/H4 and the Xtensa targets use ESP-IDF 6.1 in CI.
+Run host and recovery-tool tests from the repository root:
+
+```sh
+python3 -m unittest discover -s test/tools
+cmake -S test/native -B build/host
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure
+```
+
+For firmware builds, choose the [profiles and matching ESP-IDF versions](BUILD.md#supported-profiles) and run `python3 tools/idf_build.py <profile> build`. CI builds the 4 MB profile for every target and 8 MB C5/C6; release builds cover every supported profile. The [browser regression command](#browser-regression-checks) uses mocked controller responses.
+
+- Native tests cover the power state machine, BLE matching, shell parsing, configuration validation, Wi-Fi and Zigbee lifecycle, status LED patterns, and I²C/PSU error handling. The Python tests cover recovery partition layouts.
 - On each H target, complete first setup over the primary serial console, confirm BLE discovery and Zigbee joining, and recover an invalid saved configuration through serial. Verify no Wi-Fi AP or HTTP service starts. On Wi-Fi-only targets, confirm Zigbee mode and Zigbee button actions are rejected before saving.
 - Confirm each application fits its selected partition.
 - Review compiler warnings and check that generated configuration files are not committed.
@@ -79,6 +89,8 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Verify On, Off, and Toggle control and ensure the reported On/Off attribute follows the optocoupled power sense, not the last command.
 - Exercise commissioning, rejoin, leave/reset, coordinator restart, and router recovery.
 - With a configured status LED, verify factory-new automatic joining, serial `zigbee commission`, and a commissioning button all flash twice every second and print the joining message with `logs off`. Run `status` during the attempt and verify it shows `joining`. Test success, no coordinator accepting joins, repeated commissioning requests, failure to start steering, leave/reset during joining, and opening the AP during joining; each completed or stopped attempt must clear the joining indication and restore the applicable power-state or AP pattern. Verify success/failure messages and retry guidance in the shell.
+- Pair with PSU monitoring off and confirm a usable switch without fabricated PSU values. Then pair with PSU monitoring on, confirm the extra clusters and named sensor units, and compare voltage/current and raw fan values with serial `status`. Interrupt a PSU read: numeric sensors should become unknown and the fault flag should clear a cached fan value. Restore communication and verify reporting resumes without re-pairing.
+- After changing Zigbee identity or optional PSU clusters, refresh the coordinator interview and verify the supplied definition still matches. Check AP pause/resume and coordinator restart with the same pairing.
 
 ## OTA (8 MB only)
 

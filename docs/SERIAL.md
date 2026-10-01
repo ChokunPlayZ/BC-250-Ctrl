@@ -6,37 +6,7 @@ Enter ordinary commands and read plain-text replies. There are no JSON commands 
 
 The shell detects basic terminals automatically and provides a prompt, echo, backspace, and Ctrl+C without terminal escape sequences. Enter `terminal ansi` to enable full editing after switching to a compatible terminal, or `terminal plain` to return to basic input. Disable local echo in your terminal because the controller echoes input. Informational service logs stay enabled by default. `logs off` reduces them to errors for a quieter prompt; `logs on` restores them. This choice lasts until reboot.
 
-At boot, the console prints the operating mode and radio profile, configuration source and validation status, hostname, Wi-Fi SSID and whether a password is set, Zigbee identity/channel, GPIO assignments, power timings, saved BLE controllers and enabled counts, button actions, and PSU I²C settings. The summary does not print passwords. GPIO `-1` means disabled and Zigbee channel `0` means automatic selection.
-
-## First setup on ESP32-H
-
-ESP32-H2, H21, and H4 have BLE and native Zigbee but no Wi-Fi. Their first setup, recovery, BLE discovery, and power commands all use this serial shell; there is no setup AP or browser interface. Connect to the board's primary console and choose GPIOs from its schematic. For a PS_ON latch circuit, for example:
-
-```text
-set timing.strategy ps_on_latched
-set ps_on.gpio <PS_ON_GPIO>
-set configured on
-save
-```
-
-For a sensed power method, also assign the power-sense input and motherboard switch output. A factory-new Zigbee router starts joining after the saved configuration boots. Use `zigbee commission` to retry, `ble scan` to discover nearby devices, and `factory reset ERASE ALL` if settings need to be cleared. ESP32-H builds use a 4 MB flash layout and are updated over the serial port.
-
-Runtime logs show controller arrival with its address and RSSI, absence and rearming, and whether arrival queues power-on or skips it because power is already sensed on. The power service then reports whether a queued command actually triggers a sequence, is unnecessary, or is rejected because shutdown or retry cooldown is active. It also logs debounced button presses/releases and short/double/long gestures with their assigned actions, PS_ON and power-button output changes, filtered power-sense changes, sequence timeouts, Wi-Fi connection/reconnect and AP client events, Zigbee startup/pairing/pause/resume and power requests, configuration promotion, PSU availability, reboot/reset, and firmware upload results. Repeated matching BLE advertisements and unchanged power/PSU polling do not produce informational logs.
-
-```text
-bc250> status
-Firmware:      v1.2.3
-Power:         off (sense: off)
-...
-bc250> on
-Power command queued. Enter status to check the result.
-bc250> set hostname bc250-lab
-Setting updated. Enter save to apply, or discard to undo.
-bc250*> set wifi_ssid "My Wi-Fi"
-Setting updated. Enter save to apply, or discard to undo.
-bc250*> save
-Settings saved. Rebooting...
-```
+## Commands
 
 | Command | Result |
 |---|---|
@@ -52,7 +22,7 @@ Settings saved. Rebooting...
 | `i2c scan <SDA> <SCL>` | Scan validated I²C pins; show addresses, progress, and partial results after a fault |
 | `psu data` | View cached raw PIC registers and a hex/ASCII EEPROM dump, with sample ages |
 | `zigbee commission`, `zigbee reset` | Start joining or clear only Zigbee network state |
-| `wifi ap` | Open the setup AP in any radio profile; closes after five minutes with no connected clients |
+| `wifi ap` | On Wi-Fi capable targets, open the setup AP in either radio profile; it closes after five minutes with no connected clients |
 | `admin reset` | Generate, save, and display a new admin password once |
 | `factory reset ERASE ALL` | Erase all NVS data, including settings and Zigbee state, then reboot |
 | `reboot` | Restart and discard unsaved shell edits |
@@ -61,11 +31,17 @@ Settings saved. Rebooting...
 
 `config get` and `config show` are aliases for `config`. `config set <setting> <value>`, `config save`, and `config discard` are also supported. Command names and setting values are case sensitive. Leading/trailing spaces and repeated spaces between arguments are accepted. Each command is limited to 512 characters.
 
-The radio profile accepts `wifi` or `zigbee`. `wifi ap` pauses Zigbee while the AP is open; closing the AP from the portal or allowing it to expire resumes Zigbee without erasing its pairing. Run `zigbee commission` and `zigbee reset` with the AP closed.
+The radio profile accepts `wifi` or `zigbee` when supported by the chip. On C5/C6, `wifi ap` pauses Zigbee until the AP closes without erasing pairing. Run `zigbee commission` and `zigbee reset` with the AP closed.
 
-The shell prints `Zigbee: joining network. Enable permit-join on your coordinator.` when joining actually starts, including automatic joining on a factory-new network and joining from a local button. It prints the result when joining succeeds or fails, or `Zigbee: joining stopped.` if the stack is paused, reset, or leaves the network during an attempt. These messages appear even with `logs off`. The `status` command shows `Zigbee: joining` while an attempt is active. A configured status LED flashes twice every second during the attempt; after a failure, enable permit-join and run `zigbee commission` to retry.
+For pairing messages, retries, and network reset, see [Zigbee](ZIGBEE.md#pairing-and-network-recovery).
 
-For coordinator pairing, moving to another network, radio settings, and ZHA/Zigbee2MQTT device definitions, see [ZIGBEE.md](ZIGBEE.md).
+## Status and logs
+
+At boot, the console prints the operating mode and radio profile, configuration source and validation status, hostname, Wi-Fi SSID and whether a password is set, Zigbee identity/channel, GPIO assignments, power timings, saved BLE controllers and enabled counts, button actions, and PSU I²C settings. The summary does not print passwords. GPIO `-1` means disabled and Zigbee channel `0` means automatic selection.
+
+Runtime logs show controller arrival with its address and RSSI, absence and rearming, and whether arrival queues power-on or skips it because power is already sensed on. The power service then reports whether a queued command actually triggers a sequence, is unnecessary, or is rejected because shutdown or retry cooldown is active. It also logs debounced button presses/releases and short/double/long gestures with their assigned actions, PS_ON and power-button output changes, filtered power-sense changes, sequence timeouts, Wi-Fi connection/reconnect and AP client events, Zigbee startup/pairing/pause/resume and power requests, configuration promotion, PSU availability, reboot/reset, and firmware upload results. Repeated matching BLE advertisements and unchanged power/PSU polling do not produce informational logs.
+
+A queued power command can still be rejected by the state machine. Use `status` to check the final power state.
 
 ## Editing settings
 
@@ -91,7 +67,7 @@ config
 save
 ```
 
-These pin numbers are examples; choose pins for your board and wiring. `power_button.gpio` is the **motherboard power-switch output**, which drives the optocoupler at the motherboard header; it does not read a physical pushbutton. `radio` is a short alias for `radio_profile`. The `pins.` prefix is optional for GPIO roles, so `set pins.ps_on.gpio 4` also works. Power methods are `ps_on_only`, `button_only`, `ps_on_then_button`, `simultaneous`, and `ps_on_latched`. The last one uses only PS_ON and turns off by opening it immediately; set a physical button's short action to `toggle` or use Zigbee On/Off. An empty `wifi_password` clears the credential in the shell.
+These pin numbers are examples; choose pins for your board and wiring. `power_button.gpio` is the **motherboard power-switch output**, separate from a physical pushbutton. `radio` is a short alias for `radio_profile`. The `pins.` prefix is optional for GPIO roles, so `set pins.ps_on.gpio 4` also works. The [power-method table](CONFIGURATION.md#power-methods) lists accepted strategy values and required pins. An empty `wifi_password` clears the credential in the shell.
 
 All physical buttons, including power and auxiliary buttons, use the custom `buttons` slots. For a switch from GPIO to ESP ground, set `active_high off` and `pull_up on` to use the ESP internal pull-up without an external resistor. Buttons and BLE matchers use zero-based slots. Set `button_count` or `ble_device_count` to include the slots you want, then edit their fields:
 
@@ -114,8 +90,8 @@ set ble_devices.0.enabled on
 
 Button actions are `none`, `on`, `off`, `toggle`, `force_off`, `config_ap`, `zigbee_commission`, and `zigbee_reset`. BLE matcher types are `address`, `name_exact`, `name_prefix`, `service_uuid`, and `manufacturer_data`. `config` shows fields for slots included by the current counts. Unused slots remain available through Tab completion.
 
-Edits remain in memory until `save`; `bc250*>` marks unsaved changes. Each successful edit reports current configuration errors and GPIO advisories immediately. You can still edit several related fields, including swapping GPIO roles, before saving. GPIO guidance is warning-only except GPIO 12 and 14 on C5, which are blocked because of NodeMCU C5 Mini boot failures. The legacy override cannot bypass these exclusions. `save` checks blocked and required pins, duplicate assignments, numeric ranges, and configuration consistency, stages the result, and reboots. Invalid settings leave edits available for correction. Saved changes follow the existing 30-second health check and rollback process. During first setup, set `configured on` after supplying the required pins and radio settings. `status`, scans, and power commands always use the running configuration until reboot.
+Edits remain in memory until `save`; `bc250*>` marks unsaved changes. Each successful edit reports configuration errors and GPIO advisories immediately. You can edit several related fields, including swapping GPIO roles, before saving. `save` checks required and [blocked pins](CONFIGURATION.md#gpio-selection), duplicate assignments, numeric ranges, and configuration consistency, then stages the result and reboots. Invalid settings leave edits available for correction. During first setup, set `configured on` after supplying the required pins and radio settings. `status`, scans, and power commands use the running configuration until reboot; staged changes follow the [health check and rollback](SETUP.md#wi-fi-capable-targets).
 
 `admin reset` takes effect immediately, updates both active and pending configuration, and refreshes the password hash in unsaved shell edits. Neither pending rollback nor a later shell save restores the old password. The setup AP stays open without a Wi-Fi password.
 
-Treat physical serial access as administrator access. There is no serial login. The generated admin password appears once; keep terminal captures private. Entered passwords are echoed, so terminal recordings can contain them. The HTTP API continues to use JSON for local integrations; see [API.md](API.md).
+Physical serial access grants administrator control without a login. Entered passwords are echoed and can appear in terminal recordings; the generated admin password appears once. See [access and security](SETUP.md#access-and-security). For JSON integration, use the [HTTP API](API.md).
