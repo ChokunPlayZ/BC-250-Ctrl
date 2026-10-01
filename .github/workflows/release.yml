@@ -100,3 +100,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$RELEASE_TAG" ./* --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Add image table to release description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release view "$RELEASE_TAG" --json body --repo "$GITHUB_REPOSITORY" > release.json
+          python3 tools/release_image_table.py \
+            --assets-dir release \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --release-json release.json \
+            --output release-notes.md
+          gh release edit "$RELEASE_TAG" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"

@@ -44,7 +44,9 @@ After flashing, follow [first setup](SETUP.md). The [wiring guide](WIRING.md) gi
 
 ## Release assets and updates
 
-Publishing a GitHub Release from a tag such as `v1.2.3` builds every profile above and attaches the images, `SHA256SUMS`, and `bc250_recover.py`. Release tags must be `vMAJOR.MINOR.PATCH`, optionally with a suffix such as `-rc.1`, and at most 31 characters.
+Publishing a GitHub Release from a tag such as `v1.2.3` builds every profile above, attaches the images, `SHA256SUMS`, and `bc250_recover.py`, and adds a direct image download table to the release description. Release tags must be `vMAJOR.MINOR.PATCH`, optionally with a suffix such as `-rc.1`, and at most 31 characters.
+
+To place the table within your own release notes, put `<!-- bc250-image-table -->` at that position in the description before publishing. Otherwise, the table is placed at the top. Rerunning the release workflow updates the same table.
 
 | Asset | Use |
 |---|---|
