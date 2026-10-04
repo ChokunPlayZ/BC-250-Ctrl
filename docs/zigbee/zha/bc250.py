@@ -61,6 +61,7 @@ for attribute, name, divisor, invalid, device_class, unit, precision in (
     ("rms_current", "PSU input current", 100, 0xFFFF, SensorDeviceClass.CURRENT, "A", 2),
     ("dc_voltage", "PSU output voltage", 100, -32768, SensorDeviceClass.VOLTAGE, "V", 2),
     ("dc_current", "PSU output current", 10, -32768, SensorDeviceClass.CURRENT, "A", 1),
+    ("dc_power", "PSU output power", 10, -32768, SensorDeviceClass.POWER, "W", 1),
 ):
     builder.sensor(
         attribute_name=attribute,

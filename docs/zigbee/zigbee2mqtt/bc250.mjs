@@ -8,6 +8,7 @@ const measurements = [
     ['rmsCurrent', 'psu_input_current', 100, 0xffff, 'A'],
     ['dcVoltage', 'psu_output_voltage', 100, -32768, 'V'],
     ['dcCurrent', 'psu_output_current', 10, -32768, 'A'],
+    ['dcPower', 'psu_output_power', 10, -32768, 'W'],
 ];
 
 const electrical = {
@@ -81,7 +82,9 @@ export default {
         }
         for (const [, property, , , unit] of measurements) {
             exposes.push(e.numeric(property, ea.STATE_GET).withUnit(unit)
-                .withDescription(`PSU ${property.replace('psu_', '').replaceAll('_', ' ')}`));
+                .withDescription(property === 'psu_output_power'
+                    ? 'Calculated DC output power (output voltage × output current)'
+                    : `PSU ${property.replace('psu_', '').replaceAll('_', ' ')}`));
         }
         exposes.push(e.numeric('psu_fan_raw', ea.STATE_GET)
             .withDescription('Raw PSU PIC fan reading, not RPM; null while PSU telemetry is unavailable'));
@@ -96,7 +99,7 @@ export default {
         await endpoint.read('genOnOff', ['onOff']);
         if (endpoint.supportsInputCluster('haElectricalMeasurement')) {
             // PSU reports are sent directly to coordinator endpoint 1 by firmware.
-            // Do not configure generic power/energy attributes it does not implement.
+            // Do not configure generic AC power or energy attributes it does not implement.
             await endpoint.read('haElectricalMeasurement', measurements.map(([attribute]) => attribute));
             await endpoint.read('genAnalogInput', ['presentValue', 'statusFlags']);
         }

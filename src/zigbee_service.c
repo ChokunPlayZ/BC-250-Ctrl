@@ -175,6 +175,7 @@ static void add_psu_clusters(ezb_af_ep_desc_t endpoint)
     ADD_ELECTRICAL(RMS_CURRENT, ac_unknown);
     ADD_ELECTRICAL(DC_VOLTAGE, dc_unknown);
     ADD_ELECTRICAL(DC_CURRENT, dc_unknown);
+    ADD_ELECTRICAL(DC_POWER, dc_unknown);
     ADD_ELECTRICAL(AC_VOLTAGE_MULTIPLIER, one);
     ADD_ELECTRICAL(AC_VOLTAGE_DIVISOR, ten);
     ADD_ELECTRICAL(AC_CURRENT_MULTIPLIER, one);
@@ -183,6 +184,8 @@ static void add_psu_clusters(ezb_af_ep_desc_t endpoint)
     ADD_ELECTRICAL(DC_VOLTAGE_DIVISOR, hundred);
     ADD_ELECTRICAL(DC_CURRENT_MULTIPLIER, one);
     ADD_ELECTRICAL(DC_CURRENT_DIVISOR, ten);
+    ADD_ELECTRICAL(DC_POWER_MULTIPLIER, one);
+    ADD_ELECTRICAL(DC_POWER_DIVISOR, ten);
 #undef ADD_ELECTRICAL
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(endpoint, electrical));
 
@@ -372,6 +375,9 @@ static void update_psu_attribute_cb(void *arg)
     uint16_t input_current = psu.available ? (uint16_t)(psu.input_current_a * 100.0f + 0.5f) : UINT16_MAX;
     int16_t output_voltage = psu.available ? (int16_t)(psu.output_voltage_v * 100.0f + 0.5f) : INT16_MIN;
     int16_t output_current = psu.available ? (int16_t)(psu.output_current_a * 10.0f + 0.5f) : INT16_MIN;
+    float output_watts = psu.output_voltage_v * psu.output_current_a;
+    int16_t output_power = psu.available && output_watts >= 0.0f && output_watts < 3276.7f
+                               ? (int16_t)(output_watts * 10.0f + 0.5f) : INT16_MIN;
     float fan = psu.available ? (float)psu.fan_speed_raw : 0.0f;
     uint8_t fan_flags = psu.available ? 0 : EZB_ZCL_ANALOG_INPUT_STATUS_FLAGS_FAULT;
 
@@ -380,6 +386,7 @@ static void update_psu_attribute_cb(void *arg)
     updated &= set_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_RMS_CURRENT_ID, &input_current);
     updated &= set_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_VOLTAGE_ID, &output_voltage);
     updated &= set_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_CURRENT_ID, &output_current);
+    updated &= set_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_POWER_ID, &output_power);
     updated &= set_psu_attr(analog, EZB_ZCL_ATTR_ANALOG_INPUT_PRESENT_VALUE_ID, &fan);
     updated &= set_psu_attr(analog, EZB_ZCL_ATTR_ANALOG_INPUT_STATUS_FLAGS_ID, &fan_flags);
     if (!updated) return;
@@ -393,10 +400,24 @@ static void update_psu_attribute_cb(void *arg)
         (!psu.available || now - s_psu_last_report_us < BC250_PSU_REPORT_INTERVAL_US)) return;
 
     bool reported = true;
+    if (s_psu_last_report_us == 0) {
+        /* Generic coordinators cache these only after receiving them; send them before samples. */
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_VOLTAGE_MULTIPLIER_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_VOLTAGE_DIVISOR_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_CURRENT_MULTIPLIER_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_CURRENT_DIVISOR_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_VOLTAGE_MULTIPLIER_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_VOLTAGE_DIVISOR_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_CURRENT_MULTIPLIER_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_CURRENT_DIVISOR_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_POWER_MULTIPLIER_ID);
+        reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_POWER_DIVISOR_ID);
+    }
     reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_RMS_VOLTAGE_ID);
     reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_RMS_CURRENT_ID);
     reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_VOLTAGE_ID);
     reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_CURRENT_ID);
+    reported &= report_psu_attr(electrical, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_DC_POWER_ID);
     if (psu.available) reported &= report_psu_attr(analog, EZB_ZCL_ATTR_ANALOG_INPUT_PRESENT_VALUE_ID);
     if (availability_changed || s_psu_last_report_us == 0) {
         reported &= report_psu_attr(analog, EZB_ZCL_ATTR_ANALOG_INPUT_STATUS_FLAGS_ID);

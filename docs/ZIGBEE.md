@@ -1,6 +1,6 @@
 # Zigbee setup and device definitions
 
-The ESP32-C5/C6/H2/H21/H4 controller joins an existing Zigbee network as an always-powered **router**. Endpoint 1 accepts standard On, Off, and Toggle commands. Its On/Off state follows the optocoupled power-sense input in sensed modes and the PS_ON output in latch mode. Optional HP Common Slot PSU monitoring adds voltage, current, and raw fan readings.
+The ESP32-C5/C6/H2/H21/H4 controller joins an existing Zigbee network as an always-powered **router**. Endpoint 1 accepts standard On, Off, and Toggle commands. Its On/Off state follows the optocoupled power-sense input in sensed modes and the PS_ON output in latch mode. Optional HP Common Slot PSU monitoring adds voltage, current, calculated DC output power, and raw fan readings.
 
 This guide covers commissioning, coordinator integrations, endpoint definitions, and Zigbee network reset. The supplied definitions are local integration files, not bundled upstream device support. Hardware acceptance is covered in [Verification](TESTING.md#radio-interoperability).
 
@@ -39,7 +39,7 @@ A full [factory reset](RECOVERY.md) clears controller settings and Zigbee pairin
 
 ## Zigbee2MQTT
 
-Use [bc250.mjs](zigbee/zigbee2mqtt/bc250.mjs) as an external converter. It matches the default manufacturer/model, provides a switch, and adds PSU exposes only when the interviewed endpoint advertises Electrical Measurement. It does not require an MQTT client on the ESP32; Zigbee2MQTT handles MQTT on the coordinator host.
+Use [bc250.mjs](zigbee/zigbee2mqtt/bc250.mjs) as an external converter. It matches the default manufacturer/model, provides a switch, and adds PSU exposes only when the interviewed endpoint advertises Electrical Measurement. It does not require an MQTT client on the ESP32; Zigbee2MQTT handles MQTT on the coordinator host. The generic Zigbee2MQTT Power/Voltage/Current exposes combine AC input and DC output readings under the same names. This converter gives them distinct names, applies their scaling, and clears invalid samples. Install it to get reliable PSU entities.
 
 ### Install and pair
 
@@ -53,7 +53,7 @@ Use [bc250.mjs](zigbee/zigbee2mqtt/bc250.mjs) as an external converter. It match
 
 3. Restart Zigbee2MQTT and check its log for converter loading errors. See the [official external-converter installation guide](https://www.zigbee2mqtt.io/advanced/more/external_converters.html) and [`enable_external_js` setting](https://www.zigbee2mqtt.io/guide/configuration/all-settings.html#enable_external_js).
 4. Enable Permit join, then follow [pairing](#pairing-and-network-recovery). Rename the device, for example `bc250`.
-5. Check Exposes for `state`; with PSU monitoring enabled, also expect the six telemetry properties below. For an existing device, run **Reconfigure** after installing the converter. If its saved cluster list predates PSU enablement, perform another interview or remove and pair it again.
+5. Check Exposes for `state`; with PSU monitoring enabled, also expect the seven telemetry properties below. For an existing device, run **Reconfigure** after installing the converter. If its saved cluster list predates PSU enablement, perform another interview or remove and pair it again.
 
 ### Commands and readings
 
@@ -68,7 +68,7 @@ For the default MQTT base topic and friendly name `bc250`:
 | `zigbee2mqtt/bc250/get` | `{"psu_input_voltage":""}` | Read one PSU measurement |
 | `zigbee2mqtt/bc250/get` | `{"psu_fan_raw":""}` | Read fan value and validity flags |
 
-The converter binds On/Off reporting with minimum interval 0, maximum 300 seconds, and change 1. It reads the initial state and, if present, PSU attributes during configuration. It also reads fan value/flags on Zigbee2MQTT startup and device announcements to initialize its validity cache. PSU reports come directly from firmware; it does not configure unsupported power or energy attributes. The setter returns no optimistic state, so the command itself does not publish a fabricated power result. Let the hardware sequence finish and use a report or `/get` to check it.
+The converter binds On/Off reporting with minimum interval 0, maximum 300 seconds, and change 1. It reads the initial state and, if present, PSU attributes during configuration. It also reads fan value/flags on Zigbee2MQTT startup and device announcements to initialize its validity cache. PSU reports come directly from firmware; it does not configure unsupported energy attributes. The setter returns no optimistic state, so the command itself does not publish a fabricated power result. Let the hardware sequence finish and use a report or `/get` to check it.
 
 | Property | Unit / values |
 |---|---|
@@ -77,6 +77,7 @@ The converter binds On/Off reporting with minimum interval 0, maximum 300 second
 | `psu_input_current` | A, or `null` for an invalid sample |
 | `psu_output_voltage` | V, or `null` for an invalid sample |
 | `psu_output_current` | A, or `null` for an invalid sample |
+| `psu_output_power` | W, calculated from DC output voltage × current; `null` for an invalid sample |
 | `psu_fan_raw` | Raw PIC fan value, or `null` until valid flags are received / while faulted |
 | `psu_available` | Boolean from Analog Input fault flags; independent of Zigbee2MQTT device availability |
 
@@ -98,7 +99,7 @@ The standard On/Off Output endpoint can be discovered as a power switch without 
 
 3. Check configuration and restart Home Assistant. Check the logs for import errors before pairing. This file targets the current `zhaquirks.builder` API; if that module is missing, update Home Assistant rather than installing Python packages into its managed environment. See the [upstream device-handler project](https://github.com/zigpy/zha-device-handlers) for quirk development.
 4. Open ZHA's **Add device** flow and follow [pairing](#pairing-and-network-recovery). ZHA's navigation can vary by release; see the [official ZHA guide](https://www.home-assistant.io/integrations/zha/#adding-devices).
-5. Check the switch and these additional entities: **PSU input voltage**, **PSU input current**, **PSU output voltage**, **PSU output current**, **PSU fan raw**, and diagnostic **PSU telemetry fault**. The fault sensor is on when the PSU sample is invalid. Numeric invalid samples become unknown.
+5. Check the switch and these additional entities: **PSU input voltage**, **PSU input current**, **PSU output voltage**, **PSU output current**, **PSU output power**, **PSU fan raw**, and diagnostic **PSU telemetry fault**. The fault sensor is on when the PSU sample is invalid. Numeric invalid samples become unknown.
 
 The quirk replaces Analog Input handling to clear a stale fan reading when a fault is reported, and suppresses duplicate generic PSU entities and the generic writable Analog Input number. It leaves the standard On/Off cluster available for ZHA control. Sensor entity IDs depend on the device name and existing entity registry.
 
@@ -109,7 +110,7 @@ For an already paired device, restart first and check its device diagnostics for
 If you change `zigbee_manufacturer` or `zigbee_model`, update the integration file to match the exact saved strings:
 
 - Zigbee2MQTT: edit `manufacturerName` and `modelID` in the converter's `fingerprint`. Its top-level `vendor` and `model` are display labels; they do not replace the fingerprint.
-- ZHA: edit the two arguments to `QuirkBuilder("BC250", "BC250 Controller")`.
+- ZHA: edit the two arguments to `QuirkBuilder("CKLabs", "BC250 Controller")`.
 
 Save/reboot the controller, restart the coordinator integration to load the changed definition, and refresh its interview. Use a friendly device name in the coordinator when you only want to rename the device in dashboards; this preserves the default matching strings.
 
@@ -158,6 +159,7 @@ All listed attributes use standard cluster encoding, without a manufacturer-spec
 | Input current | `0x0B04` | RMSCurrent `0x0508` | uint16 | raw ÷ 100 = A | `0xFFFF` |
 | Output voltage | `0x0B04` | DCVoltage `0x0100` | int16 | raw ÷ 100 = V | `0x8000` = −32768 |
 | Output current | `0x0B04` | DCCurrent `0x0103` | int16 | raw ÷ 10 = A | `0x8000` = −32768 |
+| Output power | `0x0B04` | DCPower `0x0106` | int16 | raw ÷ 10 = W | `0x8000` = −32768 |
 | Fan reading | `0x000C` | PresentValue `0x0055` | float32 | Raw PIC value, **not RPM** | Ignore when faulted |
 | Sample validity | `0x000C` | StatusFlags `0x006F` | bitmap8 | Fault bit `0x02` means invalid | `0x02` when unavailable |
 | Fan description | `0x000C` | Description `0x001C` | character string | `PSU fan raw` | — |
@@ -168,14 +170,15 @@ All listed attributes use standard cluster encoding, without a manufacturer-spec
 | AC current | `0x0602` / 1 | `0x0603` / 100 |
 | DC voltage | `0x0200` / 1 | `0x0201` / 100 |
 | DC current | `0x0202` / 1 | `0x0203` / 10 |
+| DC power | `0x0204` / 1 | `0x0205` / 10 |
 
 For example, input voltage `2305` is 230.5 V, input current `123` is 1.23 A, output voltage `1208` is 12.08 V, and output current `154` is 15.4 A. Apply scaling once. Decode DC values as signed before checking for −32768.
 
-Firmware updates attributes on PSU samples and sends explicit reports to coordinator short address `0x0000`, **destination endpoint 1**. It sends an initial set after joining, then valid periodic reports at least 10 seconds apart, or at the PSU poll interval when that interval is longer. A detected validity change bypasses the 10-second limit. A PSU read failure is detected at the next poll, not instantly when a wire disconnects.
+Firmware updates attributes on PSU samples and sends explicit reports to coordinator short address `0x0000`, **destination endpoint 1**. The initial set after joining reports scaling attributes before measurements so generic coordinators can decode the integers. It then sends valid periodic reports at least 10 seconds apart, or at the PSU poll interval when that interval is longer. A detected validity change bypasses the 10-second limit. A PSU read failure is detected at the next poll, not instantly when a wire disconnects.
 
 When unavailable, firmware updates all electrical readings to their sentinels, sets fan PresentValue locally to zero, and reports the fault flag. It does not send the invalid fan value as a fresh measurement. The coordinator must clear/ignore any cached fan reading when it receives the fault flag. Subsequent unavailable samples do not repeatedly report unless the first set failed; valid readings resume when communication recovers. StatusFlags reports are sent on the initial set and validity changes, rather than every valid sample.
 
-PSU internal temperature is currently available through serial, web status, and HTTP only. Active power, apparent power, energy, calibrated fan RPM, and fan control are not exposed. Input volts × amps is not an active-power measurement.
+PSU internal temperature is currently available through serial, web status, and HTTP only. DC output power is calculated from the same sampled output voltage and current; it is not a separate PSU power measurement. AC active power, apparent power, energy, calibrated fan RPM, and fan control are not exposed. Input volts × amps is not an active-power measurement.
 
 ## Troubleshooting
 
@@ -186,6 +189,7 @@ PSU internal temperature is currently available through serial, web status, and 
 | Router disappears while editing settings | The setup AP pauses Zigbee. Close it to restore pairing and communication. Devices routing through this controller also lose that route while it is paused. |
 | Joined locally but missing/offline at the coordinator | The local joined flag is not a link health check. Check coordinator logs, the interview, current network, and radio coverage. |
 | Zigbee2MQTT says unsupported / ZHA quirk does not apply | Check the converter/quirk loading log and exact manufacturer/model strings. Verify PSU clusters exist for the optional ZHA quirk. |
+| Zigbee2MQTT shows `N/A W`, `1218 V`, or `36 A` | Install the supplied converter, restart Zigbee2MQTT, and Reconfigure or re-interview the device. Those values are generic DC integers (for example, 1218 means 12.18 V); generic exposes can also mix AC input and DC output values. Flash updated firmware for calculated output power and scaling reports. |
 | PSU entities missing after enablement | Save/reboot with PSU enabled and refresh the coordinator interview; cluster discovery is cached. |
 | 6553.5 V, −327.68 V, or other impossible readings | Invalid sentinels were scaled as measurements or scaling was applied twice. Use the supplied definition and compare with serial `status`. |
 | Fan remains at an old value after a PSU fault | Check Analog Input StatusFlags, and confirm the definition clears its cache on fault. A raw zero by itself does not establish validity. |
