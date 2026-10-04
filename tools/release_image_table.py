@@ -17,7 +17,7 @@ PLACEHOLDER = "<!-- bc250-image-table -->"
 
 def image_table(assets_dir: Path, repository: str, tag: str) -> str:
     rows = [
-        "| Profile | Application image | Full flash image |",
+        "| Profile | Application image (preserves settings) | Full flash image (wipes settings) |",
         "|---|---|---|",
     ]
     base_url = f"https://github.com/{repository}/releases/download/{quote(tag, safe='')}"
@@ -34,13 +34,16 @@ def image_table(assets_dir: Path, repository: str, tag: str) -> str:
     return "\n".join(rows)
 
 
-def update_notes(body: str, table: str) -> str:
+def update_notes(body: str, table: str, repository: str, tag: str) -> str:
+    upgrade_url = f"https://github.com/{repository}/blob/{quote(tag, safe='')}/docs/UPGRADE.md"
     section = (
         f"{START}\n"
         "## Firmware images\n\n"
-        "Choose the profile matching your chip and flash size. Use the application "
-        "image for web updates on 8 MB builds; flash the full image at address "
-        "`0x0` over serial/USB.\n\n"
+        "Choose the profile matching your chip and flash size. For a board with "
+        "saved settings, use the application image and follow the "
+        f"[upgrade guide]({upgrade_url}). The full image is flashed at `0x0` "
+        "over serial/USB and **wipes configuration and Zigbee pairing**; use it "
+        "for first installation or an intentional reset.\n\n"
         f"{table}\n"
         f"{END}"
     )
@@ -70,7 +73,7 @@ def main() -> None:
 
     body = json.loads(args.release_json.read_text())["body"] or ""
     table = image_table(args.assets_dir, args.repository, args.tag)
-    args.output.write_text(update_notes(body, table))
+    args.output.write_text(update_notes(body, table, args.repository, args.tag))
 
 
 if __name__ == "__main__":

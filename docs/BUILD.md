@@ -31,16 +31,18 @@ python3 tools/idf_build.py esp32c5_4mb build
 python3 tools/idf_build.py esp32c5_4mb -p PORT flash monitor
 ```
 
-Replace the profile and `PORT` for your board. The helper accepts normal `idf.py` actions and options after the profile. For example:
+Replace the profile and `PORT` for your board. The helper accepts normal `idf.py` actions and options after the profile. To deliberately wipe settings for a fresh setup:
 
 ```sh
 python3 tools/idf_build.py esp32c5_4mb menuconfig
 python3 tools/idf_build.py esp32c5_4mb -p PORT erase-flash flash
 ```
 
+For a board that is already configured, follow the [upgrade guide](UPGRADE.md) and omit `erase-flash`.
+
 Generated configuration and artifacts are kept under `build/<profile>/`. Do not flash an 8 MB image to a 4 MB module. C5 profiles use the chip's native USB Serial/JTAG port for the interactive console, not a board's USB-to-UART bridge. `PORT` is commonly `/dev/ttyACM0` on Linux or a `/dev/cu.*` device on macOS. Other profiles use the ESP-IDF primary console selected for the chip, usually UART0. See [serial shell](SERIAL.md) for console details.
 
-After flashing, follow [first setup](SETUP.md). The [wiring guide](WIRING.md) gives the safe electrical bring-up order.
+After a first installation or intentional wipe, follow [first setup](SETUP.md). After a settings-preserving update, verify the saved configuration as described in the [upgrade guide](UPGRADE.md). The [wiring guide](WIRING.md) gives the safe electrical bring-up order.
 
 ## Release assets and updates
 
@@ -50,12 +52,12 @@ To place the table within your own release notes, put `<!-- bc250-image-table --
 
 | Asset | Use |
 |---|---|
-| `bc250_ctrl-<profile>.bin` | Application image; upload through the web firmware update page on 8 MB profiles. |
-| `bc250_ctrl-<profile>-full.bin` | Bootloader, partition table, and application for serial/USB flashing at address `0x0`. It replaces the flash layout and erases saved settings in padded regions. It is not an OTA image. |
+| `bc250_ctrl-<profile>.bin` | Application image for a [settings-preserving upgrade](UPGRADE.md): web update on 8 MB profiles, or serial/USB update on either layout. |
+| `bc250_ctrl-<profile>-full.bin` | Bootloader, partition table, and application for serial/USB flashing at address `0x0`. Its padded regions wipe controller settings, Wi-Fi credentials, admin password, and Zigbee pairing. Use for first installation or an intentional configuration wipe; it is not an OTA image. |
 | `bc250_recover.py` | Clear settings and Zigbee pairing while keeping installed firmware. See [recovery](RECOVERY.md). |
 | `SHA256SUMS` | Verify downloaded assets before flashing. |
 
-Web updates are available only on 8 MB builds. ESP-IDF writes the inactive application slot and validates the image before switching slots; the newly booted image marks itself valid after 30 seconds. For 4 MB builds, update over serial/USB. Zigbee OTA is not implemented.
+Web updates are available only on 8 MB builds. ESP-IDF writes the inactive application slot and validates the image before switching slots; the newly booted image marks itself valid after 30 seconds. For 4 MB builds, update over serial/USB using the [upgrade guide](UPGRADE.md#serialusb-update-from-a-release-application-image). Zigbee OTA is not implemented.
 
 The firmware version comes from Git tags. A build at `v1.2.3` reports that tag; later commits report a `git describe` value such as `v1.2.3-4-gabc1234`, and local modifications add `-dirty`. Without a matching tag in a Git checkout, the commit hash is used; a source archive without Git reports `0.0.0+unknown`. Reconfigure an existing build after changing tags so ESP-IDF refreshes the embedded version. The version appears in the boot log, serial `status`, web overview, and HTTP status response.
 

@@ -12,6 +12,8 @@ ESP-IDF firmware for local control of a BC-250 through optically isolated, low-v
 4. Follow [first setup](docs/SETUP.md) for a Wi-Fi target or an ESP32-H target.
 5. For Zigbee control, follow the [pairing guide](docs/ZIGBEE.md#pairing-and-network-recovery).
 
+Already configured? Follow the [upgrade guide](docs/UPGRADE.md) to keep your settings. Flashing a full image at `0x0` wipes them.
+
 ## Capabilities
 
 | Area | What the firmware provides |
@@ -31,6 +33,7 @@ The power output starts inactive after reset. Sensed methods report the optocoup
 | Need | Guide |
 |---|---|
 | Choose a target, build, flash, or use release assets | [Build and releases](docs/BUILD.md) |
+| Upgrade a configured board without erasing settings | [Upgrade guide](docs/UPGRADE.md) |
 | Provision the controller and understand the setup AP | [First setup](docs/SETUP.md) |
 | Choose power behavior, GPIOs, BLE, buttons, and optional PSU monitoring | [Configuration](docs/CONFIGURATION.md) |
 | Connect the BC-250 and diagnose electrical problems | [Wiring and installation](docs/WIRING.md) |

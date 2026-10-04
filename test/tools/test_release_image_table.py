@@ -35,28 +35,30 @@ class ReleaseImageTableTests(unittest.TestCase):
 
     def test_notes_keep_existing_text_and_replace_table_on_rerun(self):
         original = "# Release notes\n\nExisting details.\n"
-        first = update_notes(original, "old table")
-        second = update_notes(first, "new table")
+        first = update_notes(original, "old table", "owner/repo", "v1.2.3")
+        second = update_notes(first, "new table", "owner/repo", "v1.2.3")
         self.assertTrue(second.endswith(original))
         self.assertEqual(second.count(START), 1)
         self.assertEqual(second.count(END), 1)
         self.assertNotIn("old table", second)
         self.assertIn("new table", second)
-        self.assertEqual(update_notes(second, "new table"), second)
+        self.assertEqual(update_notes(second, "new table", "owner/repo", "v1.2.3"), second)
+        self.assertIn("/blob/v1.2.3/docs/UPGRADE.md", second)
+        self.assertIn("wipes configuration and Zigbee pairing", second)
 
     def test_placeholder_sets_table_position(self):
         original = f"# Release notes\n\nBefore\n\n{PLACEHOLDER}\n\nAfter\n"
-        updated = update_notes(original, "table")
+        updated = update_notes(original, "table", "owner/repo", "v1.2.3")
         self.assertTrue(updated.startswith("# Release notes\n\nBefore\n\n"))
         self.assertTrue(updated.endswith("\n\nAfter\n"))
         self.assertNotIn(PLACEHOLDER, updated)
-        self.assertEqual(update_notes(updated, "table"), updated)
+        self.assertEqual(update_notes(updated, "table", "owner/repo", "v1.2.3"), updated)
 
     def test_incomplete_markers_fail_without_changing_notes(self):
         with self.assertRaisesRegex(ValueError, "markers"):
-            update_notes(f"Release notes\n{START}", "table")
+            update_notes(f"Release notes\n{START}", "table", "owner/repo", "v1.2.3")
         with self.assertRaisesRegex(ValueError, "markers"):
-            update_notes(f"{PLACEHOLDER}\n{PLACEHOLDER}", "table")
+            update_notes(f"{PLACEHOLDER}\n{PLACEHOLDER}", "table", "owner/repo", "v1.2.3")
 
 
 if __name__ == "__main__":
