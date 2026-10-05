@@ -12,6 +12,17 @@ Open the controller's web UI, expand **Firmware update**, select `bc250_ctrl-<pr
 
 The web updater is unavailable on 4 MB profiles and does not accept a full image.
 
+## 4 MB: update with the browser flash tool
+
+The [ESP32/8266 Web Flash Tool](https://t.ckl.moe/esp-flasher) lets you choose a binary and enter its flash offset. If it connects to your board:
+
+1. Choose the matching **application** file, such as `bc250_ctrl-esp32c5_4mb.bin`. Do not choose the `-full.bin` file.
+2. Set that file's **Offset** to `0x20000`. The page defaults to `0x0000`; its generic `0x10000` application cheat sheet does not match this project's 4 MB layout. Do not use its presets for this upgrade.
+3. Open **Flash Options (SPI, Mode)** and leave **Erase entire flash before writing** unchecked.
+4. Connect the board, choose **Program / Flash**, then reboot and verify the version and saved settings.
+
+For an 8 MB board, the application offset is `0x30000`, but writing it there alone may still boot the old `ota_1` slot. This tool has no option to erase only the OTA selection region. Use the controller's web updater above or the serial/USB commands below for a reliable 8 MB upgrade.
+
 ## Serial/USB: update from a release application image
 
 Activate an ESP-IDF environment for the chip and connect its programming port. Replace `PORT` and the example filename with your device's port and **matching** release application image. On C5, use the native USB Serial/JTAG port. These offsets are specific to this project's unchanged partition layouts; do not use them with a custom layout.
