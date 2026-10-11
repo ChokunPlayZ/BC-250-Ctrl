@@ -140,7 +140,8 @@ static void zcl_handler(ezb_zcl_core_action_callback_id_t callback_id, void *mes
     }
     bool requested_on = *(bool *)set->in.attribute.data.value;
     /* Local attribute refreshes mirror the current power state and are not commands. */
-    if (requested_on == bc250_power_service_is_on()) {
+    if (requested_on == bc250_power_service_is_on() &&
+        !(requested_on && bc250_power_service_state() == BC250_POWER_OFF_PENDING)) {
         ESP_LOGI(TAG, "On/Off attribute %s: no power action; state already matches", requested_on ? "on" : "off");
         return;
     }

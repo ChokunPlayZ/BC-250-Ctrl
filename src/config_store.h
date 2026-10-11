@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#define BC250_CONFIG_SCHEMA_VERSION 3U
+#define BC250_CONFIG_SCHEMA_VERSION 4U
 #define BC250_MAX_BUTTONS 8
 #define BC250_MAX_BLE_DEVICES 16
 #define BC250_GPIO_DISABLED (-1)
@@ -112,6 +112,7 @@ typedef struct {
     char zigbee_model[33];
     bc250_psu_i2c_config_t psu_i2c;
     bool hold_ps_on; /* Appended to preserve the version 1/2 NVS blob prefix. */
+    uint32_t power_off_delay_ms; /* Appended to preserve the version 1/2/3 NVS blob prefix. */
 } bc250_config_t;
 
 esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending);

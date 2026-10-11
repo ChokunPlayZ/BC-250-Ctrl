@@ -67,6 +67,7 @@ static void log_boot_config(const bc250_config_t *config, bool first_boot, bool 
              config->timing.inter_output_delay_ms, config->timing.button_pulse_ms,
              config->timing.handoff_delay_ms);
     ESP_LOGI(TAG, "Hold PS_ON while power is detected: %s", config->hold_ps_on ? "enabled" : "disabled");
+    ESP_LOGI(TAG, "Power-off delay: %" PRIu32 " ms", config->power_off_delay_ms);
     ESP_LOGI(TAG, "Power timeouts: start=%" PRIu32 " ms; shutdown=%" PRIu32
              " ms; force-off=%" PRIu32 " ms; retry cooldown=%" PRIu32 " ms; sense on/off=%u/%u ms",
              config->timing.start_timeout_ms, config->timing.shutdown_timeout_ms,
@@ -187,10 +188,10 @@ static void dispatcher_task(void *arg)
             unsigned index = event.data.ble_device_index;
             const char *label = index < config->ble_device_count && index < BC250_MAX_BLE_DEVICES &&
                                 config->ble_devices[index].label[0] ? config->ble_devices[index].label : "(unnamed)";
-            if (bc250_power_service_is_on()) {
+            if (bc250_power_service_is_on() && bc250_power_service_state() != BC250_POWER_OFF_PENDING) {
                 ESP_LOGI(TAG, "Controller [%u] %.31s: power-on skipped; power is already on", index, label);
             } else if (bc250_power_service_request(BC250_POWER_ACTION_ON)) {
-                ESP_LOGI(TAG, "Controller [%u] %.31s: power-on queued; power sense is off", index, label);
+                ESP_LOGI(TAG, "Controller [%u] %.31s: power-on queued", index, label);
             } else {
                 ESP_LOGW(TAG, "Controller [%u] %.31s: power-on not queued; power service unavailable or queue full", index, label);
             }

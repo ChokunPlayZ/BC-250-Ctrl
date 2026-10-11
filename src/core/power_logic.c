@@ -36,7 +36,7 @@ bc250_power_timing_t bc250_power_default_timing(void)
 }
 
 void bc250_power_logic_init(bc250_power_logic_t *logic, const bc250_power_timing_t *timing,
-                            bool hold_ps_on, bool sensed_on, uint64_t now_ms)
+                            bool hold_ps_on, uint32_t power_off_delay_ms, bool sensed_on, uint64_t now_ms)
 {
     if (logic == NULL) {
         return;
@@ -44,6 +44,7 @@ void bc250_power_logic_init(bc250_power_logic_t *logic, const bc250_power_timing
     memset(logic, 0, sizeof(*logic));
     logic->timing = timing != NULL ? *timing : bc250_power_default_timing();
     logic->hold_ps_on = hold_ps_on;
+    logic->power_off_delay_ms = power_off_delay_ms;
     logic->state = logic->timing.strategy == BC250_START_PS_ON_LATCHED ? BC250_POWER_OFF :
                    sensed_on ? BC250_POWER_ON : BC250_POWER_OFF;
     logic->state_started_ms = now_ms;
@@ -98,11 +99,41 @@ static bool begin_stop(bc250_power_logic_t *logic, bool force, uint64_t now_ms)
     return true;
 }
 
+static bool request_stop(bc250_power_logic_t *logic, uint64_t now_ms)
+{
+    bool latched = logic->timing.strategy == BC250_START_PS_ON_LATCHED;
+    if (logic->power_off_delay_ms > 0) {
+        outputs_idle(logic, true);
+        if (latched) logic->outputs.ps_on = true;
+        enter_state(logic, BC250_POWER_OFF_PENDING, now_ms);
+        return true;
+    }
+    if (latched) {
+        outputs_idle(logic, false);
+        enter_state(logic, BC250_POWER_OFF, now_ms);
+        return true;
+    }
+    return begin_stop(logic, false, now_ms);
+}
+
 bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action,
                          bool sensed_on, uint64_t now_ms)
 {
     if (logic == NULL || !logic->initialized) {
         return false;
+    }
+    /* Honor the deadline even when a request arrives before the next task tick. */
+    if (logic->state == BC250_POWER_OFF_PENDING) bc250_power_tick(logic, sensed_on, now_ms);
+    if (logic->state == BC250_POWER_OFF_PENDING) {
+        if (action == BC250_POWER_ACTION_TOGGLE) action = BC250_POWER_ACTION_ON;
+        /* Repeated Off commands must not extend the original deadline. */
+        if (action == BC250_POWER_ACTION_OFF) return true;
+        if (action == BC250_POWER_ACTION_ON) {
+            bool on = logic->timing.strategy == BC250_START_PS_ON_LATCHED || sensed_on;
+            outputs_idle(logic, on);
+            if (logic->timing.strategy == BC250_START_PS_ON_LATCHED) logic->outputs.ps_on = true;
+            enter_state(logic, on ? BC250_POWER_ON : BC250_POWER_OFF, now_ms);
+        }
     }
     if (logic->timing.strategy == BC250_START_PS_ON_LATCHED) {
         if (action == BC250_POWER_ACTION_TOGGLE) {
@@ -110,6 +141,9 @@ bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action
         }
         if (action != BC250_POWER_ACTION_ON && action != BC250_POWER_ACTION_OFF &&
             action != BC250_POWER_ACTION_FORCE_OFF) return false;
+        if (action == BC250_POWER_ACTION_OFF && logic->state == BC250_POWER_ON) {
+            return request_stop(logic, now_ms);
+        }
         bool on = action == BC250_POWER_ACTION_ON;
         logic->outputs.ps_on = on;
         logic->outputs.power_button = false;
@@ -131,7 +165,8 @@ bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action
         }
         return begin_start(logic, now_ms);
     case BC250_POWER_ACTION_OFF:
-        if (logic->state == BC250_POWER_STARTING && !(logic->hold_ps_on && sensed_on)) {
+        if (logic->state == BC250_POWER_STARTING &&
+            (!sensed_on || (!logic->hold_ps_on && logic->power_off_delay_ms == 0))) {
             outputs_idle(logic, false);
             enter_state(logic, BC250_POWER_OFF, now_ms);
             return true;
@@ -139,7 +174,7 @@ bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action
         if (!sensed_on || logic->state == BC250_POWER_STOPPING) {
             return true;
         }
-        return begin_stop(logic, false, now_ms);
+        return request_stop(logic, now_ms);
     case BC250_POWER_ACTION_FORCE_OFF:
         if (logic->state == BC250_POWER_STARTING && !(logic->hold_ps_on && sensed_on)) {
             outputs_idle(logic, false);
@@ -229,6 +264,21 @@ void bc250_power_tick(bc250_power_logic_t *logic, bool sensed_on, uint64_t now_m
     if (logic == NULL || !logic->initialized) {
         return;
     }
+    if (logic->state == BC250_POWER_OFF_PENDING) {
+        bool latched = logic->timing.strategy == BC250_START_PS_ON_LATCHED;
+        if (!latched && !sensed_on) {
+            outputs_idle(logic, false);
+            enter_state(logic, BC250_POWER_OFF, now_ms);
+        } else if (elapsed(now_ms, logic->state_started_ms) >= logic->power_off_delay_ms) {
+            if (latched) {
+                outputs_idle(logic, false);
+                enter_state(logic, BC250_POWER_OFF, now_ms);
+            } else {
+                begin_stop(logic, false, now_ms);
+            }
+        }
+        return;
+    }
     if (logic->timing.strategy == BC250_START_PS_ON_LATCHED) return;
     switch (logic->state) {
     case BC250_POWER_STARTING:
@@ -273,6 +323,7 @@ const char *bc250_power_state_name(bc250_power_state_t state)
     case BC250_POWER_ON: return "on";
     case BC250_POWER_STOPPING: return "stopping";
     case BC250_POWER_FAULT: return "fault";
+    case BC250_POWER_OFF_PENDING: return "off_pending";
     case BC250_POWER_UNKNOWN:
     default: return "unknown";
     }

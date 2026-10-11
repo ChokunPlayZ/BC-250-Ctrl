@@ -5,7 +5,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const html = readFileSync(path.join(__dirname, '../../src/web_ui.html'), 'utf8');
 const config = {
-  configured: true, hold_ps_on: false, radio_profile: 'zigbee', hostname: 'bc250', wifi_ssid: 'Home',
+  configured: true, hold_ps_on: false, power_off_delay_ms: 0, radio_profile: 'zigbee', hostname: 'bc250', wifi_ssid: 'Home',
   zigbee_channel: 0, zigbee_model: 'BC250 Controller',
   ble_scan_interval_ms: 100, ble_scan_window_ms: 50, ble_absent_ms: 10000,
   pins: { ps_on: {gpio: 4}, power_button: {gpio: 5}, power_sense: {gpio: 6}, status_led: {gpio: 8} },
@@ -22,7 +22,7 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
   const browser = await chromium.launch({headless: true,
     ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? {executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE} : {})});
   const errors = [];
-  async function fixture(overrides = {}, fail = '') {
+  async function fixture(overrides = {}, fail = '', statusOverrides = {}) {
     const page = await browser.newPage({viewport: {width: 1024, height: 900}});
     const calls = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -34,7 +34,7 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
       if (url === '/') return route.fulfill({contentType:'text/html', body: html});
       if (url.endsWith('/events')) return route.fulfill({contentType:'text/event-stream', body:': ready\n\n'});
       const response = url.endsWith('/config') && req.method() === 'GET' ? {...config, ...overrides} :
-        url.endsWith('/status') ? status : url.endsWith('/i2c/scan') ? {addresses:[94], complete:true} : {accepted:true};
+        url.endsWith('/status') ? {...status, ...statusOverrides} : url.endsWith('/i2c/scan') ? {addresses:[94], complete:true} : {accepted:true};
       return route.fulfill({contentType:'application/json', body: JSON.stringify(response)});
     });
     await page.goto('http://bc250.test/');
@@ -171,6 +171,46 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(latched.pins.power_button.gpio, -1);
     await page.close();
 
+    for (const strategy of [1,4]) {
+      ({page, calls} = await fixture({power_off_delay_ms:5000,timing:{...config.timing,strategy}}));
+      await page.getByRole('button', {name:'Settings', exact:true}).click();
+      await page.locator('#wiringsection > summary').click();
+      assert.equal(await page.locator('#offdelay').inputValue(), '5000');
+      for (const invalid of ['', '-1', '1.5', '4294967296']) {
+        await page.locator('#offdelay').fill(invalid);
+        assert.equal(await page.locator('#savebutton').isEnabled(), false, `invalid power-off delay: ${invalid}`);
+      }
+      await page.locator('#offdelay').fill('10000');
+      assert.equal(await page.locator('#savebutton').isEnabled(), true);
+      await page.locator('#discardbutton').click();
+      assert.equal(await page.locator('#offdelay').inputValue(), '5000');
+      assert.equal(await visible(page,'savedock'), false);
+      await page.locator('#offdelay').fill('10000');
+      await page.setViewportSize({width:320,height:844});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), true);
+      if (strategy===4) await page.screenshot({path:path.join(__dirname,'../../build/ui-preview/power-off-delay-mobile.png'),fullPage:true});
+      await page.locator('#savebutton').click();
+      await page.waitForFunction(() => sessionEnded);
+      assert.equal(JSON.parse(calls.find(c=>c.method==='PUT').body).power_off_delay_ms, 10000);
+      await page.close();
+    }
+    ({page, calls} = await fixture({power_off_delay_ms:undefined}));
+    assert.equal(await page.locator('#offdelay').inputValue(), '0', 'older configuration defaults to immediate Off');
+    assert.equal(await visible(page,'offpendinghint'), false);
+    await page.close();
+
+    ({page, calls} = await fixture({power_off_delay_ms:5000,timing:{...config.timing,strategy:4}}, '',
+      {power_state:'off_pending',power_sense_available:false}));
+    assert.equal(await page.locator('#status').textContent(), 'Power-off pending');
+    assert.equal(await visible(page,'offpendinghint'), true);
+    await page.getByRole('button',{name:'Power on',exact:true}).click();
+    await page.waitForFunction(() => !$('message').hidden);
+    assert.equal(JSON.parse(calls.find(c=>c.url.endsWith('/power')).body).action, 'on');
+    await page.getByText('More power actions',{exact:true}).click();
+    await page.getByRole('button',{name:'Toggle power',exact:true}).click();
+    assert.equal(JSON.parse(calls.filter(c=>c.url.endsWith('/power')).at(-1).body).action, 'toggle');
+    await page.close();
+
     ({page, calls} = await fixture({radio_profile:'wifi'}));
     assert.equal(await visible(page,'pairingsection'), false);
     await editNetwork(page); await page.locator('#radio').selectOption('zigbee');
@@ -199,6 +239,6 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(calls.filter(c=>c.url.endsWith('/wifi/ap/close')).length, 1);
     await page.close();
     assert.deepEqual(errors, []);
-    console.log('Web UI: dirty/revert/discard, validation, dynamic lists, save success/failure, pairing/cancel/failure, mode gating, AP close, and responsive layouts passed.');
+    console.log('Web UI: dirty/revert/discard, validation, delayed power-off settings and cancellation controls, dynamic lists, save success/failure, pairing/cancel/failure, mode gating, AP close, and responsive layouts passed.');
   } finally { await browser.close(); }
 })().catch(error => {console.error(error); process.exitCode=1;});

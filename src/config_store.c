@@ -77,17 +77,20 @@ static esp_err_t read_blob(nvs_handle_t handle, const char *key, bc250_config_t 
         return ESP_OK;
     }
     // Older versions share this prefix. Version 1 ended before PSU settings;
-    // version 2 ended before hold_ps_on. Both used 4-byte tail alignment.
+    // version 2 ended before hold_ps_on; version 3 before power_off_delay_ms.
+    // All used 4-byte tail alignment.
     bool version_1 = size == offsetof(bc250_config_t, psu_i2c) && config->schema_version == 1;
     bool version_2 = size == offsetof(bc250_config_t, hold_ps_on) && config->schema_version == 2;
-    if (version_1 || version_2) {
+    bool version_3 = size == offsetof(bc250_config_t, power_off_delay_ms) && config->schema_version == 3;
+    if (version_1 || version_2 || version_3) {
         uint32_t saved_crc = config->crc32;
         config->crc32 = 0;
         bool valid = saved_crc == esp_crc32_le(0, (const uint8_t *)config, size);
         config->crc32 = saved_crc;
         if (valid) {
             if (version_1) psu_i2c_defaults(&config->psu_i2c);
-            config->hold_ps_on = false;
+            if (!version_3) config->hold_ps_on = false;
+            config->power_off_delay_ms = 0;
             bc250_config_migrate_legacy_profile(config);
             finalize_config(config);
             return ESP_OK;
@@ -401,6 +404,7 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddNumberToObject(root, "schema_version", config->schema_version);
     cJSON_AddBoolToObject(root, "configured", config->configured);
     cJSON_AddBoolToObject(root, "hold_ps_on", config->hold_ps_on);
+    cJSON_AddNumberToObject(root, "power_off_delay_ms", config->power_off_delay_ms);
     cJSON_AddStringToObject(root, "radio_profile", bc250_radio_profile_name(config->radio_profile));
     cJSON_AddBoolToObject(root, "wifi_supported", BC250_HAS_WIFI);
     cJSON_AddBoolToObject(root, "zigbee_supported", BC250_HAS_ZIGBEE);
@@ -579,6 +583,7 @@ esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
     PATCH_ROOT_U32(ble_scan_interval_ms, UINT16_MAX);
     PATCH_ROOT_U32(ble_scan_window_ms, UINT16_MAX);
     PATCH_ROOT_U32(ble_absent_ms, UINT32_MAX);
+    PATCH_ROOT_U32(power_off_delay_ms, UINT32_MAX);
 #undef PATCH_ROOT_U32
     item = cJSON_GetObjectItemCaseSensitive(root, "zigbee_channel");
     if (cJSON_IsNumber(item)) config->zigbee_channel = item->valueint;

@@ -23,6 +23,7 @@ static bool led_pattern(bc250_power_state_t state, uint32_t slot)
     switch (state) {
     case BC250_POWER_ON: return true;
     case BC250_POWER_STARTING: return (slot % 4) < 2;
+    case BC250_POWER_OFF_PENDING:
     case BC250_POWER_STOPPING: return (slot % 16) < 8;
     case BC250_POWER_FAULT: return slot % 20 == 0 || slot % 20 == 2 || slot % 20 == 4;
     case BC250_POWER_OFF:

@@ -14,6 +14,7 @@ typedef enum {
     BC250_POWER_ON,
     BC250_POWER_STOPPING,
     BC250_POWER_FAULT,
+    BC250_POWER_OFF_PENDING,
 } bc250_power_state_t;
 
 typedef enum {
@@ -55,6 +56,7 @@ typedef struct {
     uint64_t phase_started_ms;
     uint64_t state_started_ms;
     uint64_t last_failure_ms;
+    uint32_t power_off_delay_ms;
     bool button_pulse_completed;
     bool handoff_started;
     bool hold_ps_on;
@@ -63,7 +65,7 @@ typedef struct {
 
 bc250_power_timing_t bc250_power_default_timing(void);
 void bc250_power_logic_init(bc250_power_logic_t *logic, const bc250_power_timing_t *timing,
-                            bool hold_ps_on, bool sensed_on, uint64_t now_ms);
+                            bool hold_ps_on, uint32_t power_off_delay_ms, bool sensed_on, uint64_t now_ms);
 bool bc250_power_request(bc250_power_logic_t *logic, bc250_power_action_t action,
                          bool sensed_on, uint64_t now_ms);
 void bc250_power_tick(bc250_power_logic_t *logic, bool sensed_on, uint64_t now_ms);

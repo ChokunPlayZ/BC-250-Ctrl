@@ -88,6 +88,15 @@ static void test_settings(void)
     set(&config, "hold_ps_on", "off");
     assert(!config.hold_ps_on);
     reject(&config, "hold_ps_on", "maybe");
+    set(&config, "power_off_delay_ms", "5000");
+    assert(config.power_off_delay_ms == 5000);
+    set(&config, "power_off_delay_ms", "4294967295");
+    assert(config.power_off_delay_ms == UINT32_MAX);
+    set(&config, "power_off_delay_ms", "0");
+    assert(config.power_off_delay_ms == 0);
+    reject(&config, "power_off_delay_ms", "-1");
+    reject(&config, "power_off_delay_ms", "1.5");
+    reject(&config, "power_off_delay_ms", "4294967296");
     set(&config, "configured", "yes");
     assert(config.configured);
     set(&config, "configured", "off");

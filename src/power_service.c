@@ -75,7 +75,8 @@ static void power_task(void *arg)
     uint64_t sense_ready_at = uses_power_sense() ? raw_changed_at + settle_ms : raw_changed_at;
     bool initial = uses_power_sense() && bc250_gpio_read(&s_config.power_sense);
     s_sensed_on = initial;
-    bc250_power_logic_init(&s_logic, &s_config.timing, s_config.hold_ps_on, initial, now_ms());
+    bc250_power_logic_init(&s_logic, &s_config.timing, s_config.hold_ps_on,
+                           s_config.power_off_delay_ms, initial, now_ms());
     apply_outputs(&s_logic.outputs);
     bc250_power_state_t announced = s_logic.state;
     ESP_LOGI(TAG, "Initial power state: %s; sense: %s; PS_ON: %s",
@@ -103,15 +104,20 @@ static void power_task(void *arg)
             bool wants_on = action == BC250_POWER_ACTION_ON ||
                             (action == BC250_POWER_ACTION_TOGGLE &&
                              (uses_power_sense() ? !s_sensed_on : before != BC250_POWER_ON));
+            if (action == BC250_POWER_ACTION_TOGGLE && before == BC250_POWER_OFF_PENDING) wants_on = true;
             if (!accepted) {
-                const char *reason = wants_on ? (before == BC250_POWER_STOPPING ? "shutdown in progress" : "retry cooldown active") :
+                const char *reason = wants_on ? (after == BC250_POWER_STOPPING ? "shutdown in progress" : "retry cooldown active") :
                                                "invalid action";
                 ESP_LOGW(TAG, "Power action %s rejected: %s (state=%s; sense=%s)",
                          action_name(action), reason, bc250_power_state_name(before), s_sensed_on ? "on" : "off");
             } else {
                 ESP_LOGI(TAG, "Power action %s accepted: %s -> %s", action_name(action),
                          bc250_power_state_name(before), bc250_power_state_name(after));
-                if (before != BC250_POWER_STARTING && after == BC250_POWER_STARTING) {
+                if (before == BC250_POWER_OFF_PENDING && wants_on) {
+                    ESP_LOGI(TAG, "Pending power-off canceled");
+                } else if (before != BC250_POWER_OFF_PENDING && after == BC250_POWER_OFF_PENDING) {
+                    ESP_LOGI(TAG, "Power-off scheduled in %lu ms", (unsigned long)s_config.power_off_delay_ms);
+                } else if (before != BC250_POWER_STARTING && after == BC250_POWER_STARTING) {
                     ESP_LOGI(TAG, "Power-on sequence triggered");
                 } else if (wants_on && before == after) {
                     ESP_LOGI(TAG, "Power-on skipped: %s", uses_power_sense() && s_sensed_on ?
@@ -193,7 +199,8 @@ bool bc250_power_service_sensed_on(void)
 bool bc250_power_service_is_on(void)
 {
     if (uses_power_sense()) return s_sensed_on;
-    return bc250_power_service_state() == BC250_POWER_ON;
+    bc250_power_state_t state = bc250_power_service_state();
+    return state == BC250_POWER_ON || state == BC250_POWER_OFF_PENDING;
 }
 
 bc250_power_outputs_t bc250_power_service_outputs(void)

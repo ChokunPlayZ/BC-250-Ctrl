@@ -38,6 +38,8 @@ Closes the active setup/recovery AP without saving configuration or rebooting. R
 
 Supported actions are `on`, `off`, `toggle`, and `force_off`. The response acknowledges that the action was queued; the state machine may subsequently reject a conflicting action or one sent during fault cooldown. Read `/api/v1/status` to observe the result. `409 Conflict` means the action was invalid or the queue was full.
 
+With a nonzero `power_off_delay_ms`, normal `off` enters `power_state: "off_pending"` before shutdown begins. `on` or `toggle` during this delay cancels it. Repeated `off` does not extend the delay; `force_off` bypasses it. Once motherboard shutdown begins (`stopping`), On cannot cancel it. Zigbee On/Off continues to report power on during the pending delay.
+
 ### `GET /api/v1/config`
 
 Returns the complete non-secret configuration used by the setup UI, plus `recommended_gpios` for advisory board guidance and `blocked_gpios` for hard exclusions (`[12,14]` on C5, `[]` on C6). Pins outside the recommended list are allowed without an override unless blocked. The legacy `advanced_gpio_override` field remains accepted for compatibility and cannot bypass blocked pins.
@@ -49,6 +51,8 @@ Applies a partial JSON patch, validates GPIO ranges, blocked pins, required pins
 `hold_ps_on` is a boolean, default `false`. Set `{"hold_ps_on":true}` to keep the ESP32's PS_ON contact closed whenever board power is detected, including external startup, an already-running board at service startup, and shutdown until power sense turns off. It requires an assigned PS_ON GPIO even with button-only startup. A shutdown timeout preserves the hold while the board is still sensed on. This field is also returned by `GET /api/v1/config`; omitting it from a patch preserves its current value.
 
 Set `timing.strategy` to `4` for PS_ON latch mode. This requires a PS_ON GPIO but permits `power_sense.gpio` and `power_button.gpio` to be `-1`. `hold_ps_on` has no effect in latch mode.
+
+`power_off_delay_ms` is an integer from `0` to `4294967295`, default `0`. Set `{"power_off_delay_ms":5000}` for a five-second cancellable delay before normal shutdown. It is returned by `GET /api/v1/config`; omitting it from a patch preserves its value. Older saved configurations migrate with a zero delay.
 
 ### `POST /api/v1/ble/scan`
 

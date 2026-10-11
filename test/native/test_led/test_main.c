@@ -43,7 +43,8 @@ int main(void)
     assert(bc250_status_led_start(&config) == ESP_OK);
     bc250_status_led_set_zigbee_joining(true);
     const bc250_power_state_t states[] = {BC250_POWER_OFF, BC250_POWER_ON, BC250_POWER_STARTING,
-                                         BC250_POWER_STOPPING, BC250_POWER_FAULT, BC250_POWER_UNKNOWN};
+                                         BC250_POWER_STOPPING, BC250_POWER_OFF_PENDING,
+                                         BC250_POWER_FAULT, BC250_POWER_UNKNOWN};
     for (unsigned state = 0; state < sizeof(states) / sizeof(states[0]); ++state) {
         power_state = states[state];
         sample(32);
@@ -65,6 +66,8 @@ int main(void)
     for (unsigned i = 0; i < 40; ++i) assert(samples[i] == (i % 20 == 0 || i % 20 == 2 || i % 20 == 4));
     power_state = BC250_POWER_ON; sample(16);
     for (unsigned i = 0; i < 16; ++i) assert(samples[i]);
+    power_state = BC250_POWER_OFF_PENDING; sample(32);
+    for (unsigned i = 0; i < 32; ++i) assert(samples[i] == (i % 16 < 8));
     power_state = BC250_POWER_OFF; sample(16);
     for (unsigned i = 0; i < 16; ++i) assert(!samples[i]);
     bc250_status_led_set_config_mode(true);

@@ -12,11 +12,19 @@ Use the web interface on Wi-Fi capable targets or the [serial shell](SERIAL.md) 
 | `button_only` | Pulse motherboard switch | Power sense, motherboard switch; PS_ON also required if hold is enabled | Pulse motherboard switch |
 | `ps_on_then_button` | Close PS_ON, then pulse motherboard switch after a delay | PS_ON, power sense, motherboard switch | Pulse motherboard switch |
 | `simultaneous` | Close PS_ON and pulse motherboard switch together | PS_ON, power sense, motherboard switch | Pulse motherboard switch |
-| `ps_on_latched` | Close PS_ON and keep it closed | PS_ON only | Open PS_ON immediately; no graceful OS shutdown |
+| `ps_on_latched` | Close PS_ON and keep it closed | PS_ON only | Open PS_ON after any configured delay; no graceful OS shutdown |
 
 Sensed methods filter the power input before reporting On or Off. The default on filter is 500 ms and off filter is 2 seconds. They support an explicit five-second force-off action and a retry cooldown after startup failure. A queued command acknowledges the request, not its eventual outcome; check serial `status`, the web overview, or the API after the sequence finishes.
 
 In latch mode, no power-sense input is read. The reported state follows the commanded PS_ON output. It cannot detect an externally started board, and reset or power loss opens PS_ON. For a local on/off button in this mode, assign **Toggle** to a Custom button gesture. Zigbee On/Off also works. `hold_ps_on` has no effect in latch mode.
+
+### Delayed power-off
+
+Set **Power-off delay (ms)** under **Power wiring & timing**, or serial `set power_off_delay_ms 5000` for a five-second delay. The default is `0` (immediate). The setting applies to normal Off commands from physical buttons, Zigbee, HTTP, and serial, including Toggle when power is on.
+
+During the delay, the state is `off_pending` and the board remains powered. An On command cancels the pending shutdown; a BLE controller arrival also sends On. Another Toggle from a physical button, serial, or HTTP also cancels it. Repeated Off commands keep the original deadline. Force off bypasses the delay. After the delay, sensed methods pulse the motherboard switch and latch mode opens PS_ON. The shutdown timeout starts when the switch is pulsed. If sensed power turns off during the delay, the pending shutdown is cleared. An Off during startup with power not yet detected still cancels startup immediately.
+
+Existing saved configurations retain their settings and receive a zero delay when upgraded.
 
 ### Keep PS_ON closed while power is sensed
 
