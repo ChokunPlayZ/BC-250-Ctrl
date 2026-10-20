@@ -47,3 +47,7 @@ The firmware initializes power outputs inactive; external biasing must keep them
 | Run automated and hardware checks | [Verification](docs/TESTING.md) |
 
 The web app is embedded in the firmware. The controller does not require a CDN or companion app. A broker is needed only when optional MQTT is enabled. Zigbee2MQTT, when used, runs on the coordinator host.
+
+## License
+
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
