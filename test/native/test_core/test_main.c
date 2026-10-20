@@ -286,6 +286,98 @@ static void test_ps_on_latched_without_sense(void)
     assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
 }
 
+static void test_ps_on_latched_then_button_without_sense(void)
+{
+    const uint32_t delays[] = {0, 500, 20000};
+    bc250_power_timing_t timing = bc250_power_default_timing();
+    timing.strategy = BC250_START_PS_ON_LATCHED_THEN_BUTTON;
+    assert(!bc250_power_strategy_uses_sense(timing.strategy));
+    assert(!bc250_power_strategy_uses_sense(BC250_START_PS_ON_LATCHED));
+    assert(bc250_power_strategy_uses_sense(BC250_START_PS_ON_THEN_BUTTON));
+    for (int hold = 0; hold <= 1; ++hold) {
+        for (unsigned i = 0; i < sizeof(delays) / sizeof(delays[0]); ++i) {
+            bc250_power_logic_t p;
+            timing.inter_output_delay_ms = delays[i];
+            bc250_power_logic_init(&p, &timing, hold, 0, true, 0);
+            assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, true, 1));
+            assert(p.state == BC250_POWER_STARTING && p.outputs.ps_on);
+            assert(p.outputs.power_button == (delays[i] == 0));
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+            assert(p.state_started_ms == 1); /* Repeated On never restarts the sequence. */
+            uint64_t pulse_at = 1 + delays[i];
+            if (delays[i] > 0) {
+                bc250_power_tick(&p, true, pulse_at - 1);
+                assert(p.state == BC250_POWER_STARTING && p.outputs.ps_on && !p.outputs.power_button);
+            }
+            bc250_power_tick(&p, true, pulse_at);
+            assert(p.outputs.ps_on && p.outputs.power_button);
+            bc250_power_tick(&p, false, pulse_at + timing.button_pulse_ms - 1);
+            assert(p.state == BC250_POWER_STARTING && p.outputs.power_button);
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, true,
+                                        pulse_at + timing.button_pulse_ms - 1));
+            bc250_power_tick(&p, true, pulse_at + timing.button_pulse_ms);
+            assert(p.state == BC250_POWER_ON && p.outputs.ps_on && !p.outputs.power_button);
+            /* No feedback, handoff or startup timeout may release the latch. */
+            bc250_power_tick(&p, false, 86400000);
+            bc250_power_tick(&p, true, 86400001);
+            assert(p.state == BC250_POWER_ON && p.outputs.ps_on && !p.outputs.power_button);
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 86400002));
+            assert(p.state == BC250_POWER_ON && !p.outputs.power_button);
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 86400003));
+            assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 86400004));
+            bc250_power_tick(&p, false, 86400004 + delays[i]);
+            assert(p.outputs.ps_on && p.outputs.power_button);
+            /* Reset always opens both contacts, including during a pulse. */
+            bc250_power_logic_init(&p, &timing, hold, 0, true, 86400005 + delays[i]);
+            assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+        }
+    }
+
+    const bc250_power_action_t stop[] = {
+        BC250_POWER_ACTION_OFF, BC250_POWER_ACTION_TOGGLE, BC250_POWER_ACTION_FORCE_OFF,
+    };
+    timing.inter_output_delay_ms = 500;
+    for (unsigned i = 0; i < sizeof(stop) / sizeof(stop[0]); ++i) {
+        for (int during_pulse = 0; during_pulse <= 1; ++during_pulse) {
+            bc250_power_logic_t p;
+            bc250_power_logic_init(&p, &timing, false, 5000, false, 0);
+            assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+            if (during_pulse) bc250_power_tick(&p, false, 501);
+            assert(bc250_power_request(&p, stop[i], true, during_pulse ? 502 : 2));
+            assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+            bc250_power_tick(&p, true, 100000);
+            assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+        }
+    }
+
+    for (int hold = 0; hold <= 1; ++hold) {
+        bc250_power_logic_t p;
+        bc250_power_logic_init(&p, &timing, hold, 5000, false, 0);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 1));
+        bc250_power_tick(&p, false, 501);
+        bc250_power_tick(&p, false, 501 + timing.button_pulse_ms);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 1000));
+        assert(p.state == BC250_POWER_OFF_PENDING && p.outputs.ps_on && !p.outputs.power_button);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 5999));
+        assert(p.state == BC250_POWER_ON && p.outputs.ps_on && !p.outputs.power_button);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 6000));
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_TOGGLE, false, 6001));
+        assert(p.state == BC250_POWER_ON && p.outputs.ps_on && !p.outputs.power_button);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 7000));
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 11999));
+        bc250_power_tick(&p, true, 12000);
+        assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_ON, false, 12001));
+        bc250_power_tick(&p, false, 12501);
+        bc250_power_tick(&p, false, 12501 + timing.button_pulse_ms);
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_OFF, false, 13000));
+        assert(bc250_power_request(&p, BC250_POWER_ACTION_FORCE_OFF, false, 13001));
+        assert(p.state == BC250_POWER_OFF && !p.outputs.ps_on && !p.outputs.power_button);
+    }
+}
+
 static void test_delayed_power_off(void)
 {
     bc250_power_timing_t timing = bc250_power_default_timing();
@@ -489,6 +581,7 @@ int main(void)
     test_ps_on_hold_shutdown();
     test_ps_on_hold_start_interrupted();
     test_ps_on_latched_without_sense();
+    test_ps_on_latched_then_button_without_sense();
     test_delayed_power_off();
     test_cancel_delayed_power_off();
     test_delayed_power_off_edge_cases();

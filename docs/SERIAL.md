@@ -72,6 +72,8 @@ These pin numbers are examples; choose pins for your board and wiring. `power_bu
 
 Relay outputs use the same `ps_on.active_high` and `power_button.active_high` settings: `off` for a verified active-low driver, `on` for active-high. For direct TPMS1 sensing, set `power_sense.active_high on` and `power_sense.pull_up off`; the latter selects an internal pulldown. Optocoupled sensing normally uses `active_high off` and `pull_up on`. See the [relay-board example](WIRING.md#common-esp32-two-channel-relay-board) and [direct-sense electrical requirements](WIRING.md#direct-33-v-power-sense) before connecting hardware.
 
+For zero BC-250 feedback, set `timing.strategy ps_on_latched` for PS_ON alone, or `timing.strategy ps_on_latched_then_button` to also pulse the motherboard switch during startup. Set `power_sense.gpio -1`; assign `power_button.gpio` only when using the startup pulse. Both report sense as `unused`, keep PS_ON closed until Off, and cut PSU power without confirming OS shutdown. See [no-feedback configuration](CONFIGURATION.md#control-without-bc-250-feedback).
+
 All physical buttons, including power and auxiliary buttons, use the custom `buttons` slots. For a switch from GPIO to ESP ground, set `active_high off` and `pull_up on` to use the ESP internal pull-up without an external resistor. Buttons and BLE matchers use zero-based slots. Set `button_count` or `ble_device_count` to include the slots you want, then edit their fields:
 
 ```text

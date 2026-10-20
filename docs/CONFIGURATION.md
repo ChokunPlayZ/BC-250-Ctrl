@@ -13,10 +13,34 @@ Use the web interface on Wi-Fi capable targets or the [serial shell](SERIAL.md) 
 | `ps_on_then_button` | Close PS_ON, then pulse motherboard switch after a delay | PS_ON, power sense, motherboard switch | Pulse motherboard switch |
 | `simultaneous` | Close PS_ON and pulse motherboard switch together | PS_ON, power sense, motherboard switch | Pulse motherboard switch |
 | `ps_on_latched` | Close PS_ON and keep it closed | PS_ON only | Open PS_ON after any configured delay; no graceful OS shutdown |
+| `ps_on_latched_then_button` | Close and latch PS_ON, then pulse the motherboard switch | PS_ON, motherboard switch; no power sense | Open PS_ON after any configured delay; no graceful OS shutdown |
 
 Sensed methods filter the power input before reporting On or Off. The default on filter is 500 ms and off filter is 2 seconds. They support an explicit five-second force-off action and a retry cooldown after startup failure. A queued command acknowledges the request, not its eventual outcome; check serial `status`, the web overview, or the API after the sequence finishes.
 
-In latch mode, no power-sense input is read. The reported state follows the commanded PS_ON output. It cannot detect an externally started board, and reset or power loss opens PS_ON. For a local on/off button in this mode, assign **Toggle** to a Custom button gesture. Zigbee On/Off also works. `hold_ps_on` has no effect in latch mode.
+Both latch modes work with **zero feedback from the BC-250**. No power-sense input is initialized or read. The reported state follows the commanded output, and reset or power loss opens PS_ON. `hold_ps_on` has no effect in either latch mode.
+
+### Control without BC-250 feedback
+
+Choose either of these methods under **Power wiring & timing**:
+
+- **PS_ON latch (no board feedback)** (`ps_on_latched`): use one output to turn PSU power on/off. The motherboard switch is unused. The installation must start the board when PSU power is applied, or the motherboard switch must be operated separately.
+- **PS_ON latch, then motherboard switch (no board feedback)** (`ps_on_latched_then_button`): use both outputs. On closes PS_ON, waits **PS_ON to motherboard switch delay**, pulses the switch for **Motherboard switch pulse**, and leaves PS_ON closed. A zero delay pulses the switch immediately. Repeated On commands while starting or on do not repeat the pulse.
+
+For both, set **Power sense GPIO** to `-1` and leave TPMS1/status and power-LED sense wiring disconnected. Set **Motherboard power-switch output GPIO** to `-1` for the PS_ON-only mode; assign it for the mode with a startup pulse. PSU I²C monitoring is optional and can remain disabled. A local Custom button with **Toggle**, HTTP, serial, Zigbee, and BLE arrival can request On without board feedback.
+
+Off opens PS_ON after any **Power-off delay**; Force off opens it immediately. Off or Toggle during the startup sequence cancels it immediately and releases both outputs. Neither method performs a graceful OS shutdown. After an OS shutdown, the PSU remains enabled until an Off command; the ESP cannot detect external startup, shutdown, a failed boot, or a crashed OS. Its On indication means the PSU was commanded on. In the mode with a startup pulse, `power_state` is `starting` until the pulse finishes, then `on`; `ps_on_active` is already true during startup. There is no sense-based handoff or startup/shutdown timeout in either latch mode.
+
+For a [Relay X2 installation](WIRING.md#no-feedback-wiring), a serial example is:
+
+```text
+set timing.strategy ps_on_latched_then_button
+set ps_on.gpio 16
+set power_button.gpio 17
+set power_sense.gpio -1
+set psu_i2c.enabled off
+```
+
+Match both outputs' `active_high` settings to the verified relay drivers, complete the network settings, and `save`. To use PS_ON alone, change the strategy to `ps_on_latched` and set `power_button.gpio -1`. Existing strategy values and saved configurations are unchanged; the new method is appended as API strategy `5`.
 
 ### Delayed power-off
 

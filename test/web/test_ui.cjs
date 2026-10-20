@@ -227,7 +227,41 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(latched.pins.power_button.gpio, -1);
     await page.close();
 
-    for (const strategy of [1,4]) {
+    ({page, calls} = await fixture());
+    await page.getByRole('button', {name:'Settings', exact:true}).click();
+    await page.locator('#wiringsection > summary').click();
+    await page.locator('#strategy').selectOption('5');
+    await page.locator('#sense').fill('-1');
+    assert.equal(await visible(page,'holdpsongroup'), false);
+    assert.equal(await page.locator('#savebutton').isEnabled(), true, 'two-output latch needs no feedback');
+    await page.locator('#pbtn').fill('-1');
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'startup pulse needs a switch output');
+    await page.locator('#pbtn').fill('5');
+    await page.locator('#pson').fill('-1');
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'two-output latch requires PS_ON');
+    await page.locator('#pson').fill('4');
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    const latchedWithButton = JSON.parse(calls.find(c=>c.method==='PUT').body);
+    assert.equal(latchedWithButton.timing.strategy, 5);
+    assert.equal(latchedWithButton.pins.power_sense.gpio, -1);
+    assert.equal(latchedWithButton.pins.power_button.gpio, 5);
+    assert.equal(latchedWithButton.hold_ps_on, false);
+    await page.close();
+
+    for (const strategy of [4,5]) {
+      ({page, calls} = await fixture({...latchedWithButton,timing:{...config.timing,strategy}}, '',
+        {power_state:'on',power_sense_available:false,sensed_on:false,ps_on_active:true}));
+      assert.equal(await page.locator('#strategy').inputValue(), String(strategy));
+      assert.match(await page.locator('#sensestatus').textContent(), /no BC-250 feedback/);
+      assert.equal(await page.locator('#poweroffbutton').textContent(), 'Power off');
+      await page.locator('#poweroffbutton').click();
+      await page.waitForFunction(() => !$('message').hidden);
+      assert.equal(JSON.parse(calls.find(c=>c.url.endsWith('/power')).body).action, 'off');
+      await page.close();
+    }
+
+    for (const strategy of [1,4,5]) {
       ({page, calls} = await fixture({power_off_delay_ms:5000,timing:{...config.timing,strategy}}));
       await page.getByRole('button', {name:'Settings', exact:true}).click();
       await page.locator('#wiringsection > summary').click();

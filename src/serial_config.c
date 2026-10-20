@@ -19,7 +19,7 @@ typedef struct {
 
 static const char *const profiles[] = {"wifi", "zigbee", NULL};
 static const char *const strategies[] = {"ps_on_only", "button_only", "ps_on_then_button", "simultaneous",
-                                         "ps_on_latched", NULL};
+                                         "ps_on_latched", "ps_on_latched_then_button", NULL};
 static const char *const actions[] = {"none", "on", "off", "toggle", "force_off", "config_ap",
                                      "zigbee_commission", "zigbee_reset", NULL};
 static const char *const matchers[] = {"address", "name_exact", "name_prefix", "service_uuid",
@@ -44,7 +44,7 @@ static const field_t root_fields[] = {
     STRING(zigbee_model),
     PIN(ps_on), PIN(power_button), PIN(power_sense), PIN(status_led),
     ROOT(power_sense.pull_up, BOOL, 0, 1), ROOT(power_sense.debounce_ms, U16, 0, UINT16_MAX),
-    FIELD(bc250_config_t, "timing.strategy", timing.strategy, ENUM, 0, BC250_START_PS_ON_LATCHED, strategies),
+    FIELD(bc250_config_t, "timing.strategy", timing.strategy, ENUM, 0, BC250_START_PS_ON_LATCHED_THEN_BUTTON, strategies),
     TIMING(inter_output_delay_ms), TIMING(button_pulse_ms), TIMING(handoff_delay_ms),
     TIMING(start_timeout_ms), TIMING(shutdown_timeout_ms), TIMING(force_off_ms), TIMING(retry_cooldown_ms),
     ROOT(psu_i2c.enabled, BOOL, 0, 1), ROOT(psu_i2c.sda_gpio, I8, -1, BC250_GPIO_MAX), ROOT(psu_i2c.scl_gpio, I8, -1, BC250_GPIO_MAX),

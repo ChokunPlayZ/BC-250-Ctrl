@@ -133,17 +133,17 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         snprintf(error, error_size, "radio profile unavailable on this ESP32 target");
         return ESP_ERR_INVALID_ARG;
     }
-    if (config->timing.strategy > BC250_START_PS_ON_LATCHED) {
+    if (config->timing.strategy > BC250_START_PS_ON_LATCHED_THEN_BUTTON) {
         snprintf(error, error_size, "invalid start strategy");
         return ESP_ERR_INVALID_ARG;
     }
     if (config->configured) {
-        if (config->timing.strategy != BC250_START_PS_ON_LATCHED &&
+        if (bc250_power_strategy_uses_sense(config->timing.strategy) &&
             config->power_sense.gpio == BC250_GPIO_DISABLED) {
-            snprintf(error, error_size, "power LED sense GPIO is required");
+            snprintf(error, error_size, "power sense GPIO is required for this method");
             return ESP_ERR_INVALID_ARG;
         }
-        if ((config->timing.strategy == BC250_START_PS_ON_LATCHED ||
+        if ((!bc250_power_strategy_uses_sense(config->timing.strategy) ||
              config->timing.strategy == BC250_START_PS_ON_ONLY ||
              config->timing.strategy == BC250_START_PS_ON_THEN_BUTTON ||
              config->timing.strategy == BC250_START_SIMULTANEOUS || config->hold_ps_on) &&
@@ -153,7 +153,7 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
         }
         if (config->timing.strategy != BC250_START_PS_ON_LATCHED &&
             config->power_button.gpio == BC250_GPIO_DISABLED) {
-            snprintf(error, error_size, "motherboard switch output GPIO is required for shutdown");
+            snprintf(error, error_size, "motherboard switch output GPIO is required for this method");
             return ESP_ERR_INVALID_ARG;
         }
         if (config->radio_profile == BC250_RADIO_WIFI && config->wifi_ssid[0] == '\0') {

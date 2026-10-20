@@ -113,7 +113,7 @@ static void print_status(void)
     bc250_power_outputs_t outputs = bc250_power_service_outputs();
     printf("Firmware:      %s\n", BC250_VERSION);
     printf("Power:         %s (sense: %s)\n", bc250_power_state_name(bc250_power_service_state()),
-           bc250_config_get()->timing.strategy == BC250_START_PS_ON_LATCHED ? "unused" :
+           !bc250_power_strategy_uses_sense(bc250_config_get()->timing.strategy) ? "unused" :
            bc250_power_service_sensed_on() ? "on" : "off");
     printf("Outputs:       PS_ON %s, power button %s\n", outputs.ps_on ? "active" : "inactive",
            outputs.power_button ? "active" : "inactive");

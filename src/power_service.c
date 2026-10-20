@@ -20,7 +20,7 @@ static bool s_sensed_on;
 
 static bool uses_power_sense(void)
 {
-    return s_config.timing.strategy != BC250_START_PS_ON_LATCHED;
+    return bc250_power_strategy_uses_sense(s_config.timing.strategy);
 }
 
 static const char *action_name(bc250_power_action_t action)
@@ -199,8 +199,7 @@ bool bc250_power_service_sensed_on(void)
 bool bc250_power_service_is_on(void)
 {
     if (uses_power_sense()) return s_sensed_on;
-    bc250_power_state_t state = bc250_power_service_state();
-    return state == BC250_POWER_ON || state == BC250_POWER_OFF_PENDING;
+    return bc250_power_service_outputs().ps_on;
 }
 
 bc250_power_outputs_t bc250_power_service_outputs(void)

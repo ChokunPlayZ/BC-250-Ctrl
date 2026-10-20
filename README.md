@@ -18,7 +18,7 @@ Already configured? Follow the [upgrade guide](docs/UPGRADE.md) to keep your set
 
 | Area | What the firmware provides |
 |---|---|
-| Power | Five startup methods, hardware power sensing where wired, normal shutdown, and force-off. A latch method works with PS_ON alone. |
+| Power | Six startup methods, hardware power sensing where wired, normal shutdown, and force-off. Two latch methods work with zero BC-250 feedback: PS_ON alone or PS_ON plus a startup switch pulse. |
 | Local control | Up to eight buttons with short, double, and long press actions; an optional status LED. |
 | BLE | Up to sixteen matchers that can request power-on when a device appears. BLE disappearance never powers the board off. |
 | Wi-Fi | Embedded setup and control UI, HTTP API, and live status on ESP32, S3, C3, C5, C6, and C61. |
@@ -26,7 +26,7 @@ Already configured? Follow the [upgrade guide](docs/UPGRADE.md) to keep your set
 | PSU monitoring | Optional read-only HP Common Slot PIC telemetry and FRU EEPROM identification over I²C. |
 | Recovery and updates | Configuration rollback, triple-reset setup recovery, USB/serial settings recovery, and web OTA on 8 MB profiles. |
 
-The firmware initializes power outputs inactive; external biasing must keep them inactive during reset. Sensed methods report the board's sense input; PS_ON latch mode reports the controller's output state because it has no independent sense input. See [power methods](docs/CONFIGURATION.md#power-methods) before choosing a circuit.
+The firmware initializes power outputs inactive; external biasing must keep them inactive during reset. Sensed methods report the board's sense input. The [no-feedback latch methods](docs/CONFIGURATION.md#control-without-bc-250-feedback) report commanded output state and cut PSU power on Off; they cannot confirm OS shutdown. See [power methods](docs/CONFIGURATION.md#power-methods) before choosing a circuit.
 
 ## Documentation
 

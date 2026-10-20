@@ -26,7 +26,7 @@ set configured on
 save
 ```
 
-For a sensed method, also assign the power-sense input and motherboard switch output; see [power methods](CONFIGURATION.md#power-methods). `config` lists current values and editable names. `save` validates, stages, and reboots. After a factory-new configured Zigbee router boots, it starts joining; `zigbee commission` retries. Use `ble scan` to discover nearby BLE devices. H targets require a Zigbee coordinator for remote control or configured physical buttons for local control. See [Serial shell](SERIAL.md) for all commands and setting examples.
+For a startup switch pulse with no board feedback, choose `ps_on_latched_then_button`, assign `power_button.gpio`, and leave `power_sense.gpio` at `-1`; see [control without feedback](CONFIGURATION.md#control-without-bc-250-feedback). For a sensed method, also assign the power-sense input and motherboard switch output; see [power methods](CONFIGURATION.md#power-methods). `config` lists current values and editable names. `save` validates, stages, and reboots. After a factory-new configured Zigbee router boots, it starts joining; `zigbee commission` retries. Use `ble scan` to discover nearby BLE devices. H targets require a Zigbee coordinator for remote control or configured physical buttons for local control. See [Serial shell](SERIAL.md) for all commands and setting examples.
 
 ## Setup AP behavior
 

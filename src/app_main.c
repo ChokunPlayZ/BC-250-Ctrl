@@ -41,6 +41,7 @@ static void log_boot_config(const bc250_config_t *config, bool first_boot, bool 
 {
     static const char *const strategies[] = {
         "ps_on_only", "button_only", "ps_on_then_button", "simultaneous", "ps_on_latched",
+        "ps_on_latched_then_button",
     };
     static const char *const match_types[] = {
         "address", "name_exact", "name_prefix", "service_uuid", "manufacturer_data",

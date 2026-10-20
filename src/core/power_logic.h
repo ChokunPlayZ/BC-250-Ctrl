@@ -31,7 +31,14 @@ typedef enum {
     BC250_START_PS_ON_THEN_BUTTON,
     BC250_START_SIMULTANEOUS,
     BC250_START_PS_ON_LATCHED,
+    BC250_START_PS_ON_LATCHED_THEN_BUTTON,
 } bc250_start_strategy_t;
+
+static inline bool bc250_power_strategy_uses_sense(bc250_start_strategy_t strategy)
+{
+    return strategy != BC250_START_PS_ON_LATCHED &&
+           strategy != BC250_START_PS_ON_LATCHED_THEN_BUTTON;
+}
 
 typedef struct {
     bc250_start_strategy_t strategy;

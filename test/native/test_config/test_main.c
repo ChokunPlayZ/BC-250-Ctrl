@@ -58,6 +58,18 @@ int main(void)
     config.ps_on.gpio = BC250_GPIO_DISABLED;
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
     config = fixture();
+    config.timing.strategy = BC250_START_PS_ON_LATCHED_THEN_BUTTON;
+    config.power_sense.gpio = BC250_GPIO_DISABLED;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
+    config.power_button.gpio = BC250_GPIO_DISABLED;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config.power_button.gpio = 1;
+    config.ps_on.gpio = BC250_GPIO_DISABLED;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config = fixture();
+    config.timing.strategy = BC250_START_PS_ON_LATCHED_THEN_BUTTON + 1;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config = fixture();
     config.power_sense.gpio = BC250_GPIO_DISABLED;
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
     config = fixture();

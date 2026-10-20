@@ -5,7 +5,7 @@ This guide covers the electrical connections. Choose a [power method and GPIO as
 ## Required parts
 
 - A supported ESP32 board with enough exposed GPIOs and the correct [flash profile](BUILD.md#supported-profiles)
-- Output interfaces: high-CTR phototransistor optocouplers, PhotoMOS contacts, or [normally open relay contacts](#relay-outputs) for PS_ON and the motherboard switch; PS_ON latch mode only needs PS_ON
+- Output interfaces: high-CTR phototransistor optocouplers, PhotoMOS contacts, or [normally open relay contacts](#relay-outputs) for PS_ON and the motherboard switch; the PS_ON-only latch mode only needs PS_ON
 - Power sensing for sensed methods: an optocoupler or a [verified 3.3 V GPIO connection](#direct-33-v-power-sense)
 - 430 Ω resistors for any 3.3 V-driven output optocoupler LEDs
 - External roughly 10 kΩ inactive-state bias resistors for both output GPIOs
@@ -39,7 +39,9 @@ In the sensed startup methods, the ESP32 releases PS_ON after power is detected 
 
 With **Keep PS_ON closed** enabled, normal shutdown and force-off still use the motherboard switch. PS_ON stays closed until the filtered power-sense input turns off, including if shutdown times out. Sense must therefore indicate the board's running state, not merely that the PSU has voltage, or the hold could keep itself on. Startup timeout without detected board power still releases PS_ON. ESP32 reset and recovery do not maintain the hold. Preserve any independent hold path already installed; without one, resetting the ESP32 interrupts PSU power.
 
-For **PS_ON latch (no power sense)**, PS_ON remains closed until an Off or Toggle command. This mode does not read power sense or use the motherboard switch output. Opening PS_ON removes power immediately without a graceful OS shutdown. See [power methods](CONFIGURATION.md#power-methods) for required GPIOs and control behavior.
+For **PS_ON latch (no board feedback)**, PS_ON remains closed until an Off or Toggle command. This mode does not read power sense or use the motherboard switch output. Opening PS_ON removes power immediately without a graceful OS shutdown. See [power methods](CONFIGURATION.md#power-methods) for required GPIOs and control behavior.
+
+For **PS_ON latch, then motherboard switch (no board feedback)**, PS_ON stays closed and the second output pulses the motherboard switch during startup. Both latch modes support [no-feedback wiring](#no-feedback-wiring); Off cuts PSU power after any configured delay.
 
 For the recommended active-high GPIO drive, add a roughly 10 kΩ pulldown from each output GPIO to ESP ground. This keeps both optocoupler LEDs off while the ESP32 is in reset, before firmware configures its pins. If an active-low driver circuit is used instead, bias its input to the electrically inactive high level. Verify the actual dev board's reset/boot behavior with a meter before connecting the BC-250.
 
@@ -92,6 +94,19 @@ Wire the relay contacts as above, and TPMS1 as in [direct sensing](#direct-33-v-
 For an active-low variant, verify or add GPIO 16 → 3.3 V and GPIO 17 → 3.3 V pull-ups (roughly 10 kΩ each). Active-high variants need pulldowns instead. Set these polarities before attaching the contact wires. All roles remain disabled by default; choosing an ESP32 build does not assign relay pins automatically.
 
 An optional local switch from GPIO 22 to ESP ground can be assigned under **Custom buttons** with Active high off, Internal pull-up on, and short press **Toggle**, if GPIO 22 is free on your board.
+
+### No-feedback wiring
+
+The ESP32 can be used solely for power control, with **no signal from the BC-250 back to the ESP32**. Keep the standby supply and output wiring described above; omit the TPMS1 pin 9/status wire and any power-LED sense circuit. Set **Power sense GPIO** to `-1` and leave optional PSU I²C monitoring disabled if unused.
+
+On a Relay X2 board, choose either:
+
+| Method | Output connections | GPIO settings |
+|---|---|---|
+| PS_ON latch (no board feedback) | Relay 1 COM/NO across PS_ON#/ATX ground; relay 2 unused | PS_ON `16`, motherboard switch `-1`, power sense `-1` |
+| PS_ON latch, then motherboard switch (no board feedback) | Relay 1 as above; relay 2 COM/NO across the motherboard switch | PS_ON `16`, motherboard switch `17`, power sense `-1` |
+
+Set output polarity and inactive-state bias for the exact board as described above. No additional TPMS1 ground wire is needed for an omitted sense input; the ESP still needs its supply ground, and each output contact pair needs its proper return. PS_ON remains closed until commanded off; the ESP cannot follow an OS shutdown automatically. See [no-feedback configuration and command behavior](CONFIGURATION.md#control-without-bc-250-feedback).
 
 ## Power-state input
 
@@ -185,7 +200,7 @@ The PSU PIC and identification EEPROM are optional, read-only I²C sources. Chec
 
 1. Flash and boot with every GPIO role disabled.
 2. Verify the setup AP and recovery sequence on Wi-Fi capable targets, or the serial shell on H targets.
-3. For a sensed method, connect and validate power sensing first. Latch mode has no sense input.
+3. For a sensed method, connect and validate power sensing first. For either no-feedback latch method, leave the sense circuit disconnected and set its GPIO to `-1`.
 4. Configure PS_ON or the motherboard switch output and its polarity. Test optocoupler conduction or relay COM–NO continuity, including through reset, before connecting it to the BC-250. Enable PS_ON hold if this output is the only hold path.
 5. Add any second output required by the selected method and test its sequence.
 6. Only then enable BLE/Zigbee automation.
