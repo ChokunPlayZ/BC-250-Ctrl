@@ -70,6 +70,8 @@ save
 
 These pin numbers are examples; choose pins for your board and wiring. `power_button.gpio` is the **motherboard power-switch output**, separate from a physical pushbutton. `radio` is a short alias for `radio_profile`. The `pins.` prefix is optional for GPIO roles, so `set pins.ps_on.gpio 4` also works. The [power-method table](CONFIGURATION.md#power-methods) lists accepted strategy values and required pins. An empty `wifi_password` clears the credential in the shell.
 
+Relay outputs use the same `ps_on.active_high` and `power_button.active_high` settings: `off` for a verified active-low driver, `on` for active-high. For direct TPMS1 sensing, set `power_sense.active_high on` and `power_sense.pull_up off`; the latter selects an internal pulldown. Optocoupled sensing normally uses `active_high off` and `pull_up on`. See the [relay-board example](WIRING.md#common-esp32-two-channel-relay-board) and [direct-sense electrical requirements](WIRING.md#direct-33-v-power-sense) before connecting hardware.
+
 All physical buttons, including power and auxiliary buttons, use the custom `buttons` slots. For a switch from GPIO to ESP ground, set `active_high off` and `pull_up on` to use the ESP internal pull-up without an external resistor. Buttons and BLE matchers use zero-based slots. Set `button_count` or `ble_device_count` to include the slots you want, then edit their fields:
 
 ```text

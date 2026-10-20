@@ -20,7 +20,7 @@ For firmware builds, choose the [profiles and matching ESP-IDF versions](BUILD.m
 
 ## Loopback fixture
 
-Use optocoupler outputs to drive isolated sense inputs rather than connecting outputs directly to GPIOs.
+Use optocoupler outputs or relay contacts to drive a sense fixture. For a direct sense fixture, use only a verified ESP-compatible 3.3 V source with a common ground as described in [direct sensing](WIRING.md#direct-33-v-power-sense).
 
 - Confirm both outputs remain inactive during reset, bootloader operation, and recovery AP mode. At power-service startup, both remain inactive by default; with PS_ON hold enabled, only PS_ON should assert when the board is sensed on.
 - Exercise PS_ON only, button only, delayed PS_ON then button, and zero-delay simultaneous start.
@@ -29,6 +29,8 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Set a power-off delay and exercise normal Off from physical buttons, HTTP, serial, and Zigbee in sensed and latch modes. Verify power stays on with state `off_pending`, On or a second Toggle cancels, BLE arrival cancels, repeated Off keeps the first deadline, and Force off bypasses the delay. Verify the switch pulse and shutdown timeout start after the delay; sensed-off clears pending shutdown. Save/reload the delay and upgrade version 1/2/3 active and pending configurations with all settings retained and delay zero.
 - Enable PS_ON hold and verify all four startup methods keep the contact closed after handoff. Test externally starting the board, starting the ESP32 while the board is already on, shutdown during handoff, normal shutdown, force-off, and shutdown timeout. PS_ON must remain closed throughout sensed-on operation and open after the sense-off filter; a start timeout with sense off must release both outputs. Verify the checkbox saves/reloads and rejects a missing PS_ON GPIO with button-only startup. Upgrade version 1/2 active and pending settings and verify all previous settings survive with hold disabled.
 - Simulate missing, blinking, and stuck power-LED inputs.
+- Test active-high and active-low relay drivers with COM–NO contacts disconnected from the BC-250. Confirm open contacts during reset, flashing, and recovery, then check commanded pulses and PS_ON hold. On a verified GPIO 16/17 board, confirm both relay assignments before connecting the contact wires.
+- Test both sense circuits: optocoupler with active-high off/pull-up on, and TPMS1 direct sense with active-high on/pull-up off. Check off, running, and disconnected-wire readings and the on/off filters. Save/reload each combination through the web UI and serial; unrelated web edits must preserve polarity and bias. Verify direct sensing does not falsely report on while the BC-250 is off.
 - Brown out and watchdog-reset the ESP32 at every sequence phase; no restart may produce an unintended pulse.
 
 ## Serial event logging
@@ -87,7 +89,7 @@ Use optocoupler outputs to drive isolated sense inputs rather than connecting ou
 - Learn each BLE matcher form. An absent-to-present transition must request power within two seconds of receiving an advertisement; disappearance must never request shutdown.
 - Confirm rotating-private-address devices produce an unreliable-match warning in deployment documentation or are matched by stable advertisement content.
 - Join both Home Assistant ZHA and Zigbee2MQTT as a router.
-- Verify On, Off, and Toggle control and ensure the reported On/Off attribute follows the optocoupled power sense, not the last command.
+- Verify On, Off, and Toggle control and ensure the reported On/Off attribute follows the configured power-sense input, not the last command.
 - Exercise commissioning, rejoin, leave/reset, coordinator restart, and router recovery.
 - With a configured status LED, verify factory-new automatic joining, serial `zigbee commission`, and a commissioning button all flash twice every second and print the joining message with `logs off`. Run `status` during the attempt and verify it shows `joining`. Test success, no coordinator accepting joins, repeated commissioning requests, failure to start steering, leave/reset during joining, and opening the AP during joining; each completed or stopped attempt must clear the joining indication and restore the applicable power-state or AP pattern. Verify success/failure messages and retry guidance in the shell.
 - Pair with PSU monitoring off and confirm a usable switch without fabricated PSU values. Then pair with PSU monitoring on, confirm the extra clusters and named sensor units, and compare voltage/current and raw fan values with serial `status`. Confirm DC output power is output volts × amps (for example, 12.18 V × 3.6 A is about 43.8 W), and unavailable samples clear power as well. Verify Zigbee2MQTT receives multiplier/divisor reports before measurements and does not show raw 1218 V or 36 A. Interrupt a PSU read: numeric sensors should become unknown and the fault flag should clear a cached fan value. Restore communication and verify reporting resumes without re-pairing.
@@ -110,4 +112,4 @@ npm install --prefix /tmp/bc250-web-tests playwright
 NODE_PATH=/tmp/bc250-web-tests/node_modules node test/web/test_ui.cjs
 ```
 
-For an existing compatible Chromium install, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to its executable. Tests cover change tracking, discard/revert, validation, dynamic lists, save failures, pairing confirmation/cancellation/failure, radio-mode gating, intentional disconnects, and mobile overflow. Screenshots are written to `build/ui-preview/`. No device is contacted.
+For an existing compatible Chromium install, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to its executable. Tests cover change tracking, discard/revert, relay polarity and sense-bias save/reload, validation, dynamic lists, save failures, pairing confirmation/cancellation/failure, radio-mode gating, intentional disconnects, and mobile overflow. Screenshots are written to `build/ui-preview/`. No device is contacted.

@@ -1,14 +1,14 @@
 # BC-250 ESP32 Power Controller
 
-ESP-IDF firmware for local control of a BC-250 through optically isolated, low-voltage signals. It supports physical buttons and BLE presence on every target, a web interface on Wi-Fi capable targets, and native Zigbee on C5, C6, and H targets. No cloud service is required.
+ESP-IDF firmware for local control of a BC-250 through low-voltage signals. Outputs can use optocouplers or relay contacts. **An optocoupler is recommended for power sensing**; the BC-250's TPMS1 3.3 V status signal is also usable directly at an ESP32 GPIO with a shared ground and verified voltage levels. It supports physical buttons and BLE presence on every target, a web interface on Wi-Fi capable targets, and native Zigbee on C5, C6, and H targets. No cloud service is required.
 
-> **Before connecting hardware:** The controller switches low-voltage ATX and motherboard signals only. Never connect an ESP32 or optocoupler circuit to mains voltage. Read the [wiring guide](docs/WIRING.md), including standby power, GPIO biasing, and USB back-feed precautions.
+> **Before connecting hardware:** The controller switches low-voltage ATX and motherboard signals only. Never connect this circuit to mains voltage, even when using a relay board. Read the [wiring guide](docs/WIRING.md), including standby power, GPIO voltage limits, biasing, and USB back-feed precautions.
 
 ## Start here
 
 1. Choose a chip and flash-size profile in [Build and releases](docs/BUILD.md#supported-profiles).
 2. Build and flash it, or select the matching release image. Follow the [build commands](docs/BUILD.md#build-and-flash).
-3. Wire and check the optocouplers using the [bring-up order](docs/WIRING.md#bring-up-order). All external GPIO roles start disabled.
+3. Wire and check the outputs and sense input using the [bring-up order](docs/WIRING.md#bring-up-order). For an integrated relay board, see the [common ESP32 two-channel example](docs/WIRING.md#common-esp32-two-channel-relay-board). All external GPIO roles start disabled.
 4. Follow [first setup](docs/SETUP.md) for a Wi-Fi target or an ESP32-H target.
 5. For Zigbee control, follow the [pairing guide](docs/ZIGBEE.md#pairing-and-network-recovery).
 
@@ -26,7 +26,7 @@ Already configured? Follow the [upgrade guide](docs/UPGRADE.md) to keep your set
 | PSU monitoring | Optional read-only HP Common Slot PIC telemetry and FRU EEPROM identification over I²C. |
 | Recovery and updates | Configuration rollback, triple-reset setup recovery, USB/serial settings recovery, and web OTA on 8 MB profiles. |
 
-The power output starts inactive after reset. Sensed methods report the optocoupled board state; PS_ON latch mode reports the controller's output state because it has no independent sense input. See [power methods](docs/CONFIGURATION.md#power-methods) before choosing a circuit.
+The firmware initializes power outputs inactive; external biasing must keep them inactive during reset. Sensed methods report the board's sense input; PS_ON latch mode reports the controller's output state because it has no independent sense input. See [power methods](docs/CONFIGURATION.md#power-methods) before choosing a circuit.
 
 ## Documentation
 

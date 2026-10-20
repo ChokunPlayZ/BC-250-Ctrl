@@ -74,7 +74,7 @@ Example complete response: `{"complete":true,"scanned_addresses":112,"timeout_co
 
 ### `GET /api/v1/events`
 
-Streams server-sent `status` events when the state or optocoupled sense changes, with keepalives and automatic reconnect after a bounded one-minute session.
+Streams server-sent `status` events when the state or power-sense input changes, with keepalives and automatic reconnect after a bounded one-minute session.
 
 ### `POST /api/v1/zigbee`
 

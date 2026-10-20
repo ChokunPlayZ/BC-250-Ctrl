@@ -28,9 +28,22 @@ Existing saved configurations retain their settings and receive a zero delay whe
 
 ### Keep PS_ON closed while power is sensed
 
-`hold_ps_on` defaults to `false`. When enabled for a sensed method, the controller keeps its PS_ON optocoupler closed while board power is sensed, including an external start or a board already running when the service starts. It stays closed through normal shutdown and a shutdown timeout until the filtered sense input turns off. This requires a PS_ON GPIO even with `button_only` startup. A startup timeout with sense still off releases PS_ON.
+`hold_ps_on` defaults to `false`. When enabled for a sensed method, the controller keeps its PS_ON optocoupler or relay contact closed while board power is sensed, including an external start or a board already running when the service starts. It stays closed through normal shutdown and a shutdown timeout until the filtered sense input turns off. This requires a PS_ON GPIO even with `button_only` startup. A startup timeout with sense still off releases PS_ON. Enable it if this contact is the PSU's only PS_ON hold path; otherwise the default handoff opens the contact and cuts PSU power.
 
-The sense point must indicate that the **board is running**, rather than simply that PSU voltage exists; otherwise the hold can sustain itself. Keep the board's original hold path connected, because an ESP32 reset or recovery cannot maintain this contact. See [PS_ON wiring](WIRING.md#ps_on-output) for inactive-state biasing.
+The sense point must indicate that the **board is running**, rather than simply that PSU voltage exists; otherwise the hold can sustain itself. Preserve any independent hold path already installed, because an ESP32 reset or recovery cannot maintain this contact. With the controller as the only hold path, a reset interrupts PSU power. See [PS_ON wiring](WIRING.md#ps_on-output) for inactive-state biasing.
+
+### Output polarity and power sensing
+
+Optocouplers and relays use the same output settings. For each output, `active_high: true` asserts the driver with GPIO high; `false` asserts it with GPIO low. Match the relay driver and verify that inactive opens COM–NO. See the [two-channel relay board example](WIRING.md#common-esp32-two-channel-relay-board) for GPIO assignments and reset biasing.
+
+An optocoupler is recommended for sensing. Direct TPMS1 3.3 V sensing is also usable with verified voltage levels and a shared ground. The sense polarity and bias are independent settings under **Power wiring & timing**:
+
+| Sense circuit | Power sense active high | Power sense internal pull-up (`power_sense.pull_up`) |
+|---|---|---|
+| Optocoupler collector to GPIO, emitter to ESP ground | Off | On (default) |
+| Verified TPMS1 pin 9/status to GPIO with common ground | On | Off (enables internal pulldown) |
+
+Unchecking **Power sense internal pull-up** selects a pulldown; it does not leave the input floating. Serial uses `power_sense.active_high` and `power_sense.pull_up`; JSON uses these fields under `pins.power_sense`. Existing saved settings retain their polarity and pull choice. Check the [electrical requirements for direct sensing](WIRING.md#direct-33-v-power-sense) before using it.
 
 ## GPIO selection
 
@@ -44,7 +57,7 @@ All roles default to `-1` (disabled). Select pins from the exact module and boar
 
 **C5 GPIO 12 and 14 are blocked for every role and I²C scan**, including with the legacy override, because saved assignments have prevented booting on the NodeMCU ESP32-C5 Mini. Existing settings using them enter recovery before GPIO services start. C6 has no corresponding hard exclusion. Classic ESP32 GPIO 34–39 are excluded because this firmware uses an internal pull on every input and those pins lack one. If an older C5 configuration cannot boot, use [USB/serial recovery](RECOVERY.md).
 
-For output optocouplers, add an external inactive-state bias resistor. Firmware defaults to active-high output drive, but reset and bootloader behavior must be safe independently of firmware. See [Wiring and installation](WIRING.md).
+For output optocouplers and relay drivers, add or verify an external inactive-state bias resistor. Firmware defaults to active-high output drive, but reset and bootloader behavior must be safe independently of firmware. See [Wiring and installation](WIRING.md).
 
 ## Buttons, LED, and BLE
 

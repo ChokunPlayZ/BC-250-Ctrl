@@ -8,7 +8,8 @@ const config = {
   configured: true, hold_ps_on: false, power_off_delay_ms: 0, radio_profile: 'zigbee', hostname: 'bc250', wifi_ssid: 'Home',
   zigbee_channel: 0, zigbee_model: 'BC250 Controller',
   ble_scan_interval_ms: 100, ble_scan_window_ms: 50, ble_absent_ms: 10000,
-  pins: { ps_on: {gpio: 4}, power_button: {gpio: 5}, power_sense: {gpio: 6}, status_led: {gpio: 8} },
+  pins: { ps_on: {gpio: 4, active_high: true}, power_button: {gpio: 5, active_high: true},
+    power_sense: {gpio: 6, active_high: false, pull_up: true, debounce_ms: 50}, status_led: {gpio: 8, active_high: true} },
   timing: { strategy: 1, inter_output_delay_ms: 500, button_pulse_ms: 250, handoff_delay_ms: 500,
     start_timeout_ms: 30000, shutdown_timeout_ms: 30000, force_off_ms: 5000, retry_cooldown_ms: 60000 },
   sense_on_ms: 100, sense_off_ms: 100,
@@ -118,6 +119,61 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(await visible(page,'savedock'), false);
     assert.equal(calls.filter(c=>c.method==='PUT').length, 1);
     assert.equal(JSON.parse(calls.find(c=>c.method==='PUT').body).hostname, 'updated');
+    await page.close();
+
+    // Configure a two-relay board with direct TPMS1 sensing from the web UI.
+    ({page, calls} = await fixture());
+    await page.getByRole('button', {name:'Settings', exact:true}).click();
+    await page.locator('#wiringsection > summary').click();
+    assert.equal(await page.locator('#sensepullup').isChecked(), true, 'opto sense defaults to pull-up');
+    await page.locator('#sensepullup').uncheck();
+    assert.equal(await visible(page,'savedock'), true, 'sense bias edits enable saving');
+    await page.locator('#discardbutton').click();
+    assert.equal(await page.locator('#sensepullup').isChecked(), true);
+    assert.equal(await visible(page,'savedock'), false);
+    await page.locator('#pson').fill('16');
+    await page.locator('#pbtn').fill('17');
+    await page.locator('#sense').fill('4');
+    await page.locator('#psonactive').uncheck();
+    await page.locator('#pbtnactive').uncheck();
+    await page.locator('#senseactive').check();
+    await page.locator('#sensepullup').uncheck();
+    await page.locator('#strategy').selectOption('2');
+    await page.locator('#holdpson').check();
+    await page.setViewportSize({width:320,height:844});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), true);
+    await page.screenshot({path:path.join(__dirname,'../../build/ui-preview/relay-direct-sense-mobile.png'),fullPage:true});
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    const relayConfig = JSON.parse(calls.find(c=>c.method==='PUT').body);
+    assert.deepEqual(relayConfig.pins.ps_on, {gpio:16, active_high:false});
+    assert.deepEqual(relayConfig.pins.power_button, {gpio:17, active_high:false});
+    assert.deepEqual(relayConfig.pins.power_sense, {gpio:4, active_high:true, pull_up:false, debounce_ms:50});
+    assert.equal(relayConfig.timing.strategy, 2);
+    assert.equal(relayConfig.hold_ps_on, true);
+    await page.close();
+
+    ({page, calls} = await fixture({pins:relayConfig.pins}));
+    assert.equal(await page.locator('#sensepullup').isChecked(), false, 'saved pulldown is restored');
+    assert.equal(await page.locator('#senseactive').isChecked(), true);
+    await editNetwork(page);
+    await page.locator('#hostname').fill('relay-controller');
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    assert.deepEqual(JSON.parse(calls.find(c=>c.method==='PUT').body).pins, relayConfig.pins,
+      'unrelated edits preserve relay polarity and direct sense bias');
+    await page.close();
+
+    ({page, calls} = await fixture({pins:relayConfig.pins}));
+    await page.getByRole('button', {name:'Settings', exact:true}).click();
+    await page.locator('#wiringsection > summary').click();
+    await page.locator('#senseactive').uncheck();
+    await page.locator('#sensepullup').check();
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    const optoSense = JSON.parse(calls.find(c=>c.method==='PUT').body).pins.power_sense;
+    assert.equal(optoSense.pull_up, true, 'switching back to optocoupled sensing saves pull-up');
+    assert.equal(optoSense.active_high, false);
     await page.close();
 
     ({page, calls} = await fixture());
