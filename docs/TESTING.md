@@ -11,6 +11,8 @@ cmake --build build/host
 ctest --test-dir build/host --output-on-failure
 ```
 
+MQTT service and configuration-store integration tests use cJSON. After a firmware build they automatically use `managed_components/espressif__cjson/cJSON`. Otherwise pass `-DBC250_CJSON_DIR=/path/to/cJSON` (upstream v1.7.19) when configuring CMake. CI supplies this dependency. These tests cover discovery JSON, command filtering, reconnects, retained availability, masked credentials, and schema 1–4 CRC-checked migration for active and pending blobs.
+
 For firmware builds, choose the [profiles and matching ESP-IDF versions](BUILD.md#supported-profiles) and run `python3 tools/idf_build.py <profile> build`. CI builds the 4 MB profile for every target and 8 MB C5/C6; release builds cover every supported profile. The [browser regression command](#browser-regression-checks) uses mocked controller responses.
 
 - Native tests cover the power state machine, BLE matching, shell parsing, configuration validation, Wi-Fi and Zigbee lifecycle, status LED patterns, and I²C/PSU error handling. The Python tests cover recovery partition layouts.
@@ -114,3 +116,11 @@ NODE_PATH=/tmp/bc250-web-tests/node_modules node test/web/test_ui.cjs
 ```
 
 For an existing compatible Chromium install, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to its executable. Tests cover change tracking, discard/revert, relay polarity and sense-bias save/reload, validation, dynamic lists, save failures, pairing confirmation/cancellation/failure, radio-mode gating, intentional disconnects, and mobile overflow. Screenshots are written to `build/ui-preview/`. No device is contacted.
+
+## MQTT interoperability
+
+- Configure a local broker and Home Assistant discovery. Verify one device with Power, Force off, and Power state entities; enable PSU monitoring and verify all six optional sensors. Rename the hostname and verify entity identities remain stable.
+- Exercise On/Off and Force off in sensed and latch methods, including delayed Off and cancellation. Publish unknown, retained, and oversized/fragmented commands and confirm they do not request power changes. Publish commands without retain.
+- Restart Home Assistant, restart the broker, disconnect Wi-Fi, and power-cycle the controller. Confirm rediscovery, current retained state, offline last will, and automatic reconnection. Break broker authentication and verify local control and configuration health checks continue.
+- Disconnect the PSU and verify its sensors become unavailable; restore it and verify recovery. Disable monitoring and verify its entities disappear after reboot.
+- Verify web and serial configuration listings hide the broker password. Save unrelated settings with a masked/blank password and verify authentication still works; explicitly clear/replace the password and verify the intended credential is used. Upgrade schema 4 active/pending settings with a nonzero power-off delay and verify all previous values survive with MQTT disabled.

@@ -11,7 +11,7 @@ The shell detects basic terminals automatically and provides a prompt, echo, bac
 | Command | Result |
 |---|---|
 | `help` or `?` | Show commands and examples |
-| `status` | Readable power, Wi-Fi, Zigbee, BLE presence, PSU telemetry, and available EEPROM identification |
+| `status` | Readable power, Wi-Fi, MQTT, Zigbee, BLE presence, PSU telemetry, and available EEPROM identification |
 | `on`, `off`, `toggle`, `force-off` | Queue a power action; `power <action>` also works |
 | `config` | List settings, including unsaved edits; passwords stay hidden |
 | `set <setting> <value>` | Edit one setting in memory |
@@ -32,6 +32,8 @@ The shell detects basic terminals automatically and provides a prompt, echo, bac
 `config get` and `config show` are aliases for `config`. `config set <setting> <value>`, `config save`, and `config discard` are also supported. Command names and setting values are case sensitive. Leading/trailing spaces and repeated spaces between arguments are accepted. Each command is limited to 512 characters.
 
 The radio profile accepts `wifi` or `zigbee` when supported by the chip. On C5/C6, `wifi ap` pauses Zigbee until the AP closes without erasing pairing. Run `zigbee commission` and `zigbee reset` with the AP closed.
+
+Optional MQTT in Wi-Fi mode uses the `mqtt.enabled`, `mqtt.host`, `mqtt.port`, `mqtt.username`, `mqtt.password`, and `mqtt.discovery_prefix` settings. See [Home Assistant MQTT setup](MQTT.md). MQTT passwords stay hidden in `config`; `set mqtt.password ""` clears the saved credential on the next save.
 
 For pairing messages, retries, and network reset, see [Zigbee](ZIGBEE.md#pairing-and-network-recovery).
 

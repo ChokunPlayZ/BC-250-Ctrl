@@ -55,6 +55,13 @@ static void finalize_config(bc250_config_t *config)
     config->crc32 = config_crc(config);
 }
 
+static void mqtt_defaults(bc250_mqtt_config_t *mqtt)
+{
+    memset(mqtt, 0, sizeof(*mqtt));
+    mqtt->port = 1883;
+    strlcpy(mqtt->discovery_prefix, "homeassistant", sizeof(mqtt->discovery_prefix));
+}
+
 static bool config_blob_valid(const bc250_config_t *config)
 {
     return config->schema_version == BC250_CONFIG_SCHEMA_VERSION &&
@@ -77,20 +84,23 @@ static esp_err_t read_blob(nvs_handle_t handle, const char *key, bc250_config_t 
         return ESP_OK;
     }
     // Older versions share this prefix. Version 1 ended before PSU settings;
-    // version 2 ended before hold_ps_on; version 3 before power_off_delay_ms.
+    // version 2 ended before hold_ps_on; version 3 before power_off_delay_ms;
+    // version 4 before mqtt.
     // All used 4-byte tail alignment.
     bool version_1 = size == offsetof(bc250_config_t, psu_i2c) && config->schema_version == 1;
     bool version_2 = size == offsetof(bc250_config_t, hold_ps_on) && config->schema_version == 2;
     bool version_3 = size == offsetof(bc250_config_t, power_off_delay_ms) && config->schema_version == 3;
-    if (version_1 || version_2 || version_3) {
+    bool version_4 = size == offsetof(bc250_config_t, mqtt) && config->schema_version == 4;
+    if (version_1 || version_2 || version_3 || version_4) {
         uint32_t saved_crc = config->crc32;
         config->crc32 = 0;
         bool valid = saved_crc == esp_crc32_le(0, (const uint8_t *)config, size);
         config->crc32 = saved_crc;
         if (valid) {
             if (version_1) psu_i2c_defaults(&config->psu_i2c);
-            if (!version_3) config->hold_ps_on = false;
-            config->power_off_delay_ms = 0;
+            if (version_1 || version_2) config->hold_ps_on = false;
+            if (!version_4) config->power_off_delay_ms = 0;
+            mqtt_defaults(&config->mqtt);
             bc250_config_migrate_legacy_profile(config);
             finalize_config(config);
             return ESP_OK;
@@ -218,6 +228,7 @@ void bc250_config_defaults(bc250_config_t *config)
     }
     memset(config, 0, sizeof(*config));
     config->schema_version = BC250_CONFIG_SCHEMA_VERSION;
+    mqtt_defaults(&config->mqtt);
     config->configured = false;
     config->radio_profile = BC250_HAS_WIFI ? BC250_RADIO_WIFI : BC250_RADIO_ZIGBEE;
     strlcpy(config->hostname, "bc250-ctrl", sizeof(config->hostname));
@@ -412,6 +423,13 @@ char *bc250_config_to_json(const bc250_config_t *config, bool include_secrets)
     cJSON_AddStringToObject(root, "hostname", config->hostname);
     cJSON_AddStringToObject(root, "wifi_ssid", config->wifi_ssid);
     cJSON_AddStringToObject(root, "wifi_password", include_secrets ? config->wifi_password : "");
+    cJSON *mqtt = cJSON_AddObjectToObject(root, "mqtt");
+    cJSON_AddBoolToObject(mqtt, "enabled", config->mqtt.enabled);
+    cJSON_AddStringToObject(mqtt, "host", config->mqtt.host);
+    cJSON_AddNumberToObject(mqtt, "port", config->mqtt.port);
+    cJSON_AddStringToObject(mqtt, "username", config->mqtt.username);
+    cJSON_AddStringToObject(mqtt, "password", include_secrets ? config->mqtt.password : "");
+    cJSON_AddStringToObject(mqtt, "discovery_prefix", config->mqtt.discovery_prefix);
     cJSON_AddBoolToObject(root, "advanced_gpio_override", config->advanced_gpio_override);
     cJSON *recommended = cJSON_AddArrayToObject(root, "recommended_gpios");
     cJSON *blocked = cJSON_AddArrayToObject(root, "blocked_gpios");
@@ -524,12 +542,53 @@ static bool patch_pin(cJSON *parent, const char *name, bc250_output_config_t *pi
     return true;
 }
 
+static bool patch_mqtt(bc250_mqtt_config_t *config, cJSON *mqtt)
+{
+    if (mqtt == NULL) return true;
+    if (!cJSON_IsObject(mqtt)) return false;
+    cJSON *item = cJSON_GetObjectItemCaseSensitive(mqtt, "enabled");
+    if (item != NULL) {
+        if (!cJSON_IsBool(item)) return false;
+        config->enabled = cJSON_IsTrue(item);
+    }
+    item = cJSON_GetObjectItemCaseSensitive(mqtt, "port");
+    if (item != NULL) {
+        if (!valid_integer(item, 1, UINT16_MAX)) return false;
+        config->port = item->valueint;
+    }
+    item = cJSON_GetObjectItemCaseSensitive(mqtt, "clear_password");
+    if (item != NULL) {
+        if (!cJSON_IsBool(item)) return false;
+        if (cJSON_IsTrue(item)) config->password[0] = '\0';
+    }
+    const struct { const char *name; char *value; size_t size; } fields[] = {
+        {"host", config->host, sizeof(config->host)},
+        {"username", config->username, sizeof(config->username)},
+        {"password", config->password, sizeof(config->password)},
+        {"discovery_prefix", config->discovery_prefix, sizeof(config->discovery_prefix)},
+    };
+    for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); ++i) {
+        item = cJSON_GetObjectItemCaseSensitive(mqtt, fields[i].name);
+        if (item == NULL) continue;
+        if (!cJSON_IsString(item) || strlen(item->valuestring) >= fields[i].size) return false;
+        /* Masked API reads and empty web password inputs must preserve credentials. */
+        if (strcmp(fields[i].name, "password") == 0 && !item->valuestring[0]) continue;
+        strlcpy(fields[i].value, item->valuestring, fields[i].size);
+    }
+    return true;
+}
+
 esp_err_t bc250_config_patch_json(bc250_config_t *config, const char *json,
                                   char *error, size_t error_size)
 {
     cJSON *root = cJSON_Parse(json);
     if (root == NULL) {
         snprintf(error, error_size, "invalid JSON");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!patch_mqtt(&config->mqtt, cJSON_GetObjectItemCaseSensitive(root, "mqtt"))) {
+        cJSON_Delete(root);
+        snprintf(error, error_size, "invalid MQTT setting type, port, or string length");
         return ESP_ERR_INVALID_ARG;
     }
     cJSON *item = cJSON_GetObjectItemCaseSensitive(root, "configured");

@@ -2,7 +2,7 @@
 
 The API is available on Wi-Fi targets in Wi-Fi operation. It is also available on their open configuration AP, which requires neither a Wi-Fi password nor HTTP Basic authentication. Normal station-mode requests use HTTP Basic authentication with username `admin`. ESP32-H targets have no Wi-Fi or HTTP API; use the serial shell and Zigbee.
 
-All configuration responses redact the Wi-Fi password and password hash. Sending an empty `wifi_password` preserves the current credential. For AP access, expiry, and network security, see [First setup](SETUP.md#setup-ap-behavior). Zigbee clusters, attribute scaling, and PSU report timing are documented in the [Zigbee device definition](ZIGBEE.md#device-definition-on-the-wire).
+All configuration responses redact the Wi-Fi and MQTT passwords and password hash. Sending an empty `wifi_password` preserves the current credential. For AP access, expiry, and network security, see [First setup](SETUP.md#setup-ap-behavior). Zigbee clusters, attribute scaling, and PSU report timing are documented in the [Zigbee device definition](ZIGBEE.md#device-definition-on-the-wire).
 
 ## Endpoint index
 
@@ -16,7 +16,7 @@ All configuration responses redact the Wi-Fi password and password hash. Sending
 
 ### `GET /api/v1/status`
 
-Returns firmware version, authoritative power state, sensed state, output activity, Wi-Fi status, Zigbee status, OTA capability, currently present BLE matcher labels, and an HP Common Slot protocol `psu_i2c` object. When PSU I²C is enabled and a complete checksum-verified sample is available, the object includes `age_ms`, `input_voltage_v`, `input_current_a`, `output_voltage_v`, `output_current_a`, `internal_temperature_c`, and `fan_speed_raw`. The temperature is in degrees Celsius. When communication fails, `available` is false and those values are omitted. An `error` string describes startup or sampling failures; transfer errors include the PIC address, register, write/read phase, and SDA/SCL GPIO levels. It clears after a complete valid sample.
+Returns firmware version, `power` (`ON`/`OFF`), MQTT connection state (`mqtt_connected`), authoritative power state, sensed state, output activity, Wi-Fi status, Zigbee status, OTA capability, currently present BLE matcher labels, and an HP Common Slot protocol `psu_i2c` object. When PSU I²C is enabled and a complete checksum-verified sample is available, the object includes `age_ms`, `input_voltage_v`, `input_current_a`, `output_voltage_v`, `output_current_a`, `internal_temperature_c`, and `fan_speed_raw`. The temperature is in degrees Celsius. When communication fails, `available` is false and those values are omitted. An `error` string describes startup or sampling failures; transfer errors include the PIC address, register, write/read phase, and SDA/SCL GPIO levels. It clears after a complete valid sample.
 
 `power_sense_available` is false in either no-feedback latch mode. `sensed_on` is false because no power input is initialized or read. `power_state` describes the commanded sequence; for strategy `5`, it is `starting` during the delay and switch pulse, then `on`. `ps_on_active` is true throughout that startup sequence and while on, including during a pending Off delay. These values do not confirm that the board booted or that its OS is running.
 
@@ -47,6 +47,8 @@ Returns the complete non-secret configuration used by the setup UI, plus `recomm
 ### `PUT /api/v1/config`
 
 Applies a partial JSON patch, validates GPIO ranges, blocked pins, required pins, conflicts, and timing constraints, stores it in the pending configuration slot, then reboots. The previous active configuration remains available until the new firmware has run healthily for 30 seconds. `psu_i2c` accepts `enabled`, `sda_gpio`, `scl_gpio`, `address` (decimal 88–95 for `0x58`–`0x5F`), and `poll_interval_ms` (500–60000). It is disabled by default. `radio_profile` accepts only `wifi` or `zigbee` when supported by the target. The removed `hybrid` value and other invalid profiles return `400 Bad Request`. For method requirements and GPIO restrictions, see [Configuration](CONFIGURATION.md).
+
+`mqtt` accepts `enabled` (boolean), `host` (hostname/IPv4, up to 127 bytes), `port` (1–65535, default 1883), `username` and `password` (up to 64 bytes), and `discovery_prefix` (up to 64 bytes, default `homeassistant`). Enabled MQTT requires the Wi-Fi radio profile and a valid broker host. The discovery prefix cannot contain wildcards, whitespace, or leading/trailing slashes. Empty or omitted `password` preserves the current credential; `clear_password: true` clears it before applying a nonempty replacement. See [MQTT setup and topics](MQTT.md).
 
 `hold_ps_on` is a boolean, default `false`. Set `{"hold_ps_on":true}` to keep the ESP32's PS_ON contact closed whenever board power is detected, including external startup, an already-running board at service startup, and shutdown until power sense turns off. It requires an assigned PS_ON GPIO even with button-only startup. A shutdown timeout preserves the hold while the board is still sensed on. This field is also returned by `GET /api/v1/config`; omitting it from a patch preserves its current value.
 

@@ -4,6 +4,28 @@ project(bc250_core_tests LANGUAGES C)
 
 enable_testing()
 
+# Reuse the firmware dependency after a build, or pass an upstream cJSON checkout.
+set(BC250_CJSON_DIR "${CMAKE_CURRENT_LIST_DIR}/../../managed_components/espressif__cjson/cJSON" CACHE PATH "cJSON source directory for MQTT integration tests")
+if(EXISTS "${BC250_CJSON_DIR}/cJSON.c")
+    add_executable(bc250_mqtt_tests test_mqtt/test_main.c "${BC250_CJSON_DIR}/cJSON.c")
+    target_compile_features(bc250_mqtt_tests PRIVATE c_std_11)
+    target_compile_options(bc250_mqtt_tests PRIVATE -Wall -Wextra -Werror)
+    target_compile_definitions(bc250_mqtt_tests PRIVATE BC250_VERSION="test")
+    target_include_directories(bc250_mqtt_tests PRIVATE test_mqtt/include support ../../src "${BC250_CJSON_DIR}")
+    add_test(NAME bc250_mqtt_tests COMMAND bc250_mqtt_tests)
+    add_executable(bc250_config_store_tests test_config_store/test_main.c ../../src/config_validation.c ../../src/core/power_logic.c "${BC250_CJSON_DIR}/cJSON.c")
+    target_compile_features(bc250_config_store_tests PRIVATE c_std_11)
+    target_compile_options(bc250_config_store_tests PRIVATE -Wall -Wextra -Werror)
+    target_include_directories(bc250_config_store_tests PRIVATE test_config_store/include test_mqtt/include support ../../src "${BC250_CJSON_DIR}")
+    add_test(NAME bc250_config_store_tests COMMAND bc250_config_store_tests)
+    if(UNIX)
+        target_link_libraries(bc250_mqtt_tests PRIVATE m)
+        target_link_libraries(bc250_config_store_tests PRIVATE m)
+    endif()
+else()
+    message(STATUS "MQTT integration tests need -DBC250_CJSON_DIR=<cJSON source directory>")
+endif()
+
 add_executable(
     bc250_core_tests
     test_core/test_main.c

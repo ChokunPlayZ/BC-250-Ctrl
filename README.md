@@ -22,6 +22,7 @@ Already configured? Follow the [upgrade guide](docs/UPGRADE.md) to keep your set
 | Local control | Up to eight buttons with short, double, and long press actions; an optional status LED. |
 | BLE | Up to sixteen matchers that can request power-on when a device appears. BLE disappearance never powers the board off. |
 | Wi-Fi | Embedded setup and control UI, HTTP API, and live status on ESP32, S3, C3, C5, C6, and C61. |
+| Home Assistant | Optional MQTT discovery with power control, availability, and PSU sensors in Wi-Fi mode. |
 | Zigbee | Router with standard On/Off control on C5, C6, H2, H21, and H4; optional PSU telemetry. |
 | PSU monitoring | Optional read-only HP Common Slot PIC telemetry and FRU EEPROM identification over I²C. |
 | Recovery and updates | Configuration rollback, triple-reset setup recovery, USB/serial settings recovery, and web OTA on 8 MB profiles. |
@@ -39,9 +40,10 @@ The firmware initializes power outputs inactive; external biasing must keep them
 | Connect the BC-250 and diagnose electrical problems | [Wiring and installation](docs/WIRING.md) |
 | Connect and troubleshoot a compatible HP PSU I²C bus | [PSU monitoring](docs/PSU.md) |
 | Use the interactive console | [Serial shell](docs/SERIAL.md) |
+| Connect Home Assistant over MQTT | [MQTT setup and topics](docs/MQTT.md) |
 | Integrate over HTTP | [Local HTTP API](docs/API.md) |
 | Pair with ZHA or Zigbee2MQTT and inspect Zigbee attributes | [Zigbee](docs/ZIGBEE.md) |
 | Recover settings without replacing firmware | [USB/serial recovery](docs/RECOVERY.md) |
 | Run automated and hardware checks | [Verification](docs/TESTING.md) |
 
-The web app is embedded in the firmware. The controller does not require a CDN, MQTT broker, or companion app. Zigbee2MQTT, when used, runs on the coordinator host.
+The web app is embedded in the firmware. The controller does not require a CDN or companion app. A broker is needed only when optional MQTT is enabled. Zigbee2MQTT, when used, runs on the coordinator host.

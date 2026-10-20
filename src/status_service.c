@@ -3,6 +3,7 @@
 #include "ble_presence.h"
 #include "cJSON.h"
 #include "config_store.h"
+#include "mqtt_service.h"
 #include "power_service.h"
 #include "psu_i2c_service.h"
 #include "wifi_service.h"
@@ -14,6 +15,8 @@ char *bc250_status_json(void)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "version", BC250_VERSION);
     cJSON_AddStringToObject(root, "power_state", bc250_power_state_name(bc250_power_service_state()));
+    cJSON_AddStringToObject(root, "power", bc250_power_service_is_on() ? "ON" : "OFF");
+    cJSON_AddBoolToObject(root, "mqtt_connected", bc250_mqtt_is_connected());
     cJSON_AddBoolToObject(root, "sensed_on", bc250_power_service_sensed_on());
     cJSON_AddBoolToObject(root, "power_sense_available",
                           bc250_power_strategy_uses_sense(bc250_config_get()->timing.strategy));

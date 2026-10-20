@@ -11,11 +11,16 @@ else()
 endif()
 
 if(IDF_TARGET MATCHES "^(esp32h2|esp32h21|esp32h4)$")
-    set(network_sources "wifi_service_stub.c")
+    set(network_sources "wifi_service_stub.c" "mqtt_service_stub.c")
     set(network_requires)
 else()
-    set(network_sources "wifi_service.c" "web_server.c")
+    set(network_sources "wifi_service.c" "web_server.c" "mqtt_service.c")
     set(network_requires esp_http_server esp_netif esp_wifi lwip)
+    if(EXISTS "$ENV{IDF_PATH}/components/mqtt/CMakeLists.txt")
+        list(APPEND network_requires mqtt)
+    else()
+        list(APPEND network_requires espressif__mqtt)
+    endif()
 endif()
 
 idf_component_register(

@@ -7,3 +7,8 @@ dependencies:
       - if: target in ["esp32c5", "esp32c6", "esp32h2", "esp32h21", "esp32h4"]
   espressif/cjson:
     version: "^1.7.19"
+  espressif/mqtt:
+    version: "1.1.0"
+    rules:
+      - if: "idf_version >=6.0"
+      - if: target not in ["esp32h2", "esp32h21", "esp32h4"]

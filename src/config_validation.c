@@ -1,6 +1,7 @@
 #include "config_store.h"
 
 #include <stdio.h>
+#include <string.h>
 #include "target_caps.h"
 
 #ifdef ESP_PLATFORM
@@ -164,6 +165,31 @@ esp_err_t bc250_config_validate(const bc250_config_t *config, char *error, size_
     if (config->button_count > BC250_MAX_BUTTONS || config->ble_device_count > BC250_MAX_BLE_DEVICES) {
         snprintf(error, error_size, "too many buttons or BLE devices");
         return ESP_ERR_INVALID_SIZE;
+    }
+    if (config->mqtt.enabled) {
+        if (!BC250_HAS_WIFI || config->radio_profile != BC250_RADIO_WIFI) {
+            snprintf(error, error_size, "MQTT requires the Wi-Fi radio profile");
+            return ESP_ERR_INVALID_ARG;
+        }
+        const bc250_mqtt_config_t *mqtt = &config->mqtt;
+        size_t host_len = strnlen(mqtt->host, sizeof(mqtt->host));
+        size_t prefix_len = strnlen(mqtt->discovery_prefix, sizeof(mqtt->discovery_prefix));
+        if (!host_len || host_len == sizeof(mqtt->host) || mqtt->port == 0 ||
+            strcspn(mqtt->host, " /:@?#\\\t\r\n") != host_len) {
+            snprintf(error, error_size, "MQTT requires a hostname or IPv4 address and port 1-65535");
+            return ESP_ERR_INVALID_ARG;
+        }
+        if (!prefix_len || prefix_len == sizeof(mqtt->discovery_prefix) ||
+            mqtt->discovery_prefix[0] == '/' || mqtt->discovery_prefix[prefix_len - 1] == '/' ||
+            strcspn(mqtt->discovery_prefix, "+# \t\r\n") != prefix_len) {
+            snprintf(error, error_size, "MQTT discovery prefix must be a topic without wildcards or leading/trailing slashes");
+            return ESP_ERR_INVALID_ARG;
+        }
+        if (strnlen(mqtt->username, sizeof(mqtt->username)) == sizeof(mqtt->username) ||
+            strnlen(mqtt->password, sizeof(mqtt->password)) == sizeof(mqtt->password)) {
+            snprintf(error, error_size, "MQTT credentials exceed their supported length");
+            return ESP_ERR_INVALID_ARG;
+        }
     }
     if (config->ble_scan_window_ms == 0 || config->ble_scan_interval_ms < config->ble_scan_window_ms) {
         snprintf(error, error_size, "BLE scan window must be nonzero and not exceed the interval");

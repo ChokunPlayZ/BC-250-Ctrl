@@ -308,6 +308,44 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(await page.locator('#pairbutton').isEnabled(), false, 'unsaved Zigbee profile cannot pair');
     await page.close();
 
+    ({page, calls} = await fixture({radio_profile:'wifi',mqtt:{enabled:false,host:'',port:1883,username:'',password:'',discovery_prefix:'homeassistant'}}));
+    await editNetwork(page);
+    await page.locator('#mqttsection > summary').click();
+    await page.locator('#mqttenabled').check();
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'enabled MQTT needs a broker');
+    await page.locator('#mqtthost').fill('mqtt://broker');
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'broker field rejects URI');
+    await page.locator('#mqtthost').fill('192.168.1.10');
+    assert.equal(await page.locator('#savebutton').isEnabled(), true);
+    await page.locator('#mqttprefix').fill('ha/#');
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'discovery rejects wildcards');
+    await page.locator('#mqttprefix').fill('homeassistant');
+    await page.locator('#radio').selectOption('zigbee');
+    assert.equal(await page.locator('#savebutton').isEnabled(), false, 'MQTT requires Wi-Fi mode');
+    await page.locator('#radio').selectOption('wifi');
+    await page.locator('#mqttuser').fill('controller');
+    await page.locator('#mqttpass').fill('broker-secret');
+    await page.setViewportSize({width:320,height:844});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), true, 'MQTT settings fit a phone');
+    await page.screenshot({path:path.join(__dirname,'../../build/ui-preview/mqtt-mobile.png'),fullPage:true});
+    await page.locator('#savebutton').click();
+    await page.waitForFunction(() => sessionEnded);
+    let mqttSaved=JSON.parse(calls.find(c=>c.url.endsWith('/config')&&c.method==='PUT').body).mqtt;
+    assert.deepEqual(mqttSaved,{enabled:true,host:'192.168.1.10',port:1883,username:'controller',password:'broker-secret',clear_password:false,discovery_prefix:'homeassistant'});
+    await page.close();
+
+    ({page, calls} = await fixture({radio_profile:'wifi',mqtt:{enabled:true,host:'broker.local',port:1883,username:'controller',password:'',discovery_prefix:'homeassistant'}}, '', {mqtt_connected:true}));
+    await editNetwork(page);await page.locator('#mqttsection > summary').click();
+    assert.equal(await page.locator('#mqttstatus').textContent(), 'Broker connected');
+    assert.equal(await page.locator('#mqttpass').inputValue(), '');
+    await page.locator('#mqttpass').fill('temporary');
+    await page.locator('#discardbutton').click();
+    assert.equal(await page.locator('#mqttpass').inputValue(), '', 'discard clears MQTT password edits');
+    await page.locator('#mqttclear').check();
+    assert.equal(await page.locator('#savebutton').isEnabled(), true);
+    assert.equal(await page.evaluate(()=>readConfig().mqtt.clear_password), true);
+    await page.close();
+
     ({page, calls} = await fixture({configured:false}));
     assert.notEqual(await page.locator('#settings').getAttribute('open'), null);
     assert.equal(await page.locator('#pairbutton').isEnabled(), false);
@@ -329,6 +367,6 @@ const status = { power_state: 'off', sensed_on: false, config_ap: true, wifi_ip:
     assert.equal(calls.filter(c=>c.url.endsWith('/wifi/ap/close')).length, 1);
     await page.close();
     assert.deepEqual(errors, []);
-    console.log('Web UI: dirty/revert/discard, validation, delayed power-off settings and cancellation controls, dynamic lists, save success/failure, pairing/cancel/failure, mode gating, AP close, and responsive layouts passed.');
+    console.log('Web UI: MQTT setup/validation/password/discard, dirty/revert/discard, validation, delayed power-off settings and cancellation controls, dynamic lists, save success/failure, pairing/cancel/failure, mode gating, AP close, and responsive layouts passed.');
   } finally { await browser.close(); }
 })().catch(error => {console.error(error); process.exitCode=1;});

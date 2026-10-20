@@ -37,6 +37,8 @@ static const field_t root_fields[] = {
     ROOT(power_off_delay_ms, U32, 0, UINT32_MAX),
     FIELD(bc250_config_t, "radio_profile", radio_profile, ENUM, 0, BC250_RADIO_ZIGBEE, profiles),
     STRING(hostname), STRING(wifi_ssid), STRING(wifi_password),
+    ROOT(mqtt.enabled, BOOL, 0, 1), STRING(mqtt.host), ROOT(mqtt.port, U16, 1, UINT16_MAX),
+    STRING(mqtt.username), STRING(mqtt.password), STRING(mqtt.discovery_prefix),
     {"admin_password", 0, PASSWORD, 8, 64, NULL},
     ROOT(sense_on_ms, U16, 1, UINT16_MAX), ROOT(sense_off_ms, U16, 1, UINT16_MAX),
     ROOT(ble_scan_interval_ms, U16, 1, UINT16_MAX), ROOT(ble_scan_window_ms, U16, 1, UINT16_MAX),
@@ -205,7 +207,8 @@ static void print_field(const bc250_config_t *config, const char *key)
     const field_t *field = find_field(key, &offset);
     const void *value = (const char *)config + offset;
     printf("  %-34s ", key);
-    if (field->type == PASSWORD || strcmp(key, "wifi_password") == 0) puts("(hidden)");
+    if (field->type == PASSWORD || strcmp(key, "wifi_password") == 0 ||
+        strcmp(key, "mqtt.password") == 0) puts("(hidden)");
     else if (field->type == TEXT) printf("\"%s\"\n", (const char *)value);
     else if (field->type == BOOL) puts(*(const bool *)value ? "on" : "off");
     else if (field->type == ENUM) {

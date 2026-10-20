@@ -96,3 +96,7 @@ Configure up to sixteen BLE matchers by address, exact or prefix name, service U
 HP Common Slot monitoring is optional and read-only. Set SDA/SCL GPIOs, a PIC address from `0x58`–`0x5F` (default `0x5F`), and a poll interval from 500 to 60000 ms. The web UI and shell can scan the bus before saving. The firmware probes EEPROM addresses `0x50`–`0x57` separately for validated FRU identity. The fan reading is raw, not calibrated RPM. PSU I²C does not switch the PSU output. Check [electrical voltage and pull-up requirements](PSU.md#electrical-connection) before enabling it.
 
 The configured hostname is stored but is not currently applied as a DHCP hostname or advertised through mDNS.
+
+## MQTT and Home Assistant
+
+In Wi-Fi mode, **MQTT & Home Assistant** configures an optional local broker connection and automatic entity discovery. It starts disabled, including after upgrading older saved configurations. Broker host, port, credentials, and discovery prefix are editable through web, HTTP, and serial. See [MQTT setup, entities, and topics](MQTT.md).

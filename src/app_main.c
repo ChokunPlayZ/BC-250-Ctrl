@@ -14,6 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "mqtt_service.h"
 #include "ota_service.h"
 #include "power_service.h"
 #include "psu_i2c_service.h"
@@ -53,6 +54,9 @@ static void log_boot_config(const bc250_config_t *config, bool first_boot, bool 
              config->configured ? "yes" : "no", config_valid ? "valid" : "invalid", config->hostname);
     ESP_LOGI(TAG, "Wi-Fi SSID: %.32s; password: %s", config->wifi_ssid[0] ? config->wifi_ssid : "(unset)",
              config->wifi_password[0] ? "set" : "unset");
+    ESP_LOGI(TAG, "MQTT: %s; broker: %.127s:%u; discovery prefix: %.64s",
+             config->mqtt.enabled ? "enabled" : "disabled", config->mqtt.host,
+             config->mqtt.port, config->mqtt.discovery_prefix);
     ESP_LOGI(TAG, "Zigbee: %s; preferred channel: %u (0=auto); model: %.32s",
              config->radio_profile == BC250_RADIO_WIFI ? "disabled" : "router",
              config->zigbee_channel, config->zigbee_model);
@@ -200,6 +204,7 @@ static void dispatcher_task(void *arg)
         }
         case BC250_EVENT_POWER_STATE_CHANGED:
             bc250_zigbee_update_power_state(event.data.power_state);
+            bc250_mqtt_refresh();
             break;
         case BC250_EVENT_OPEN_CONFIG_AP:
             dispatch_button_action(BC250_BUTTON_ACTION_CONFIG_AP);
@@ -274,6 +279,7 @@ void app_main(void)
     /* Decide AP mode before starting the Zigbee router on the shared radio. */
     ESP_ERROR_CHECK(bc250_wifi_service_start(config, force_ap));
     if (config_valid && config->configured) {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_mqtt_service_start(config));
         ESP_ERROR_CHECK_WITHOUT_ABORT(bc250_zigbee_service_start(config));
     } else {
         ESP_LOGI(TAG, "Zigbee startup skipped: configuration %s", config_valid ? "not completed" : "invalid");

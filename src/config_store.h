@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#define BC250_CONFIG_SCHEMA_VERSION 4U
+#define BC250_CONFIG_SCHEMA_VERSION 5U
 #define BC250_MAX_BUTTONS 8
 #define BC250_MAX_BLE_DEVICES 16
 #define BC250_GPIO_DISABLED (-1)
@@ -81,6 +81,15 @@ typedef struct {
 } bc250_psu_i2c_config_t;
 
 typedef struct {
+    bool enabled;
+    char host[128];
+    uint16_t port;
+    char username[65];
+    char password[65];
+    char discovery_prefix[65];
+} bc250_mqtt_config_t;
+
+typedef struct {
     uint32_t schema_version;
     uint32_t crc32;
     bool configured;
@@ -113,6 +122,7 @@ typedef struct {
     bc250_psu_i2c_config_t psu_i2c;
     bool hold_ps_on; /* Appended to preserve the version 1/2 NVS blob prefix. */
     uint32_t power_off_delay_ms; /* Appended to preserve the version 1/2/3 NVS blob prefix. */
+    bc250_mqtt_config_t mqtt; /* Appended to preserve the version 4 NVS blob prefix. */
 } bc250_config_t;
 
 esp_err_t bc250_config_store_init(bool *first_boot, bool *using_pending);

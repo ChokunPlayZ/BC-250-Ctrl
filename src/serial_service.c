@@ -8,6 +8,7 @@
 
 #include "ble_presence.h"
 #include "config_store.h"
+#include "mqtt_service.h"
 #include "core/shell_args.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -132,8 +133,10 @@ static void print_status(void)
 #else
     puts("OTA:           unavailable");
 #endif
-    printf("BLE present:  ");
     const bc250_config_t *config = bc250_config_get();
+    printf("MQTT:          %s\n", !config->mqtt.enabled ? "disabled" :
+           bc250_mqtt_is_connected() ? "connected" : "disconnected");
+    printf("BLE present:  ");
     unsigned present = 0;
     for (unsigned i = 0; i < config->ble_device_count; ++i) {
         if (bc250_ble_device_present(i)) {

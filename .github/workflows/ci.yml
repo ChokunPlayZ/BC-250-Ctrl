@@ -30,7 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 -m unittest discover -s test/tools
-      - run: cmake -S test/native -B build/host
+      - uses: actions/checkout@v7
+        with:
+          repository: DaveGamble/cJSON
+          ref: v1.7.19
+          path: build/cjson
+      - run: cmake -S test/native -B build/host -DBC250_CJSON_DIR=${{ github.workspace }}/build/cjson
       - run: cmake --build build/host
       - run: ctest --test-dir build/host --output-on-failure
 

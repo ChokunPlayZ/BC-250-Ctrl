@@ -27,6 +27,15 @@ int main(void)
     char error[192], warning[192];
     bc250_config_t config = fixture();
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_OK);
+    config.mqtt = (bc250_mqtt_config_t){.enabled = true, .host = "192.168.1.10", .port = 1883,
+                                        .discovery_prefix = "homeassistant"};
+    assert((bc250_config_validate(&config, error, sizeof(error)) == ESP_OK) ==
+           (BC250_HAS_WIFI && config.radio_profile == BC250_RADIO_WIFI));
+    config.radio_profile = BC250_RADIO_WIFI;
+    assert((bc250_config_validate(&config, error, sizeof(error)) == ESP_OK) == BC250_HAS_WIFI);
+    config.mqtt.port = 0;
+    assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
+    config = fixture();
 #if defined(CONFIG_IDF_TARGET_ESP32)
     config.power_sense.gpio = 34;
     assert(bc250_config_validate(&config, error, sizeof(error)) == ESP_ERR_INVALID_ARG);
